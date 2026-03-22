@@ -6,7 +6,10 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildAdvertisementMetadata } = require("../src/local-relay-advertiser");
+const {
+  buildAdvertisementMetadata,
+  createLocalRelayAdvertiser,
+} = require("../src/local-relay-advertiser");
 
 test("buildAdvertisementMetadata omits session ids and secrets", () => {
   const metadata = buildAdvertisementMetadata({
@@ -22,4 +25,32 @@ test("buildAdvertisementMetadata omits session ids and secrets", () => {
   assert.equal(metadata.relayPort, "9000");
   assert.equal("sessionId" in metadata, false);
   assert.equal("notificationSecret" in metadata, false);
+});
+
+test("createLocalRelayAdvertiser starts once and stops once", () => {
+  const calls = [];
+  const metadata = {
+    macDeviceId: "mac-1",
+    displayName: "MacBook Pro",
+    relayPort: "9000",
+  };
+  const advertiser = createLocalRelayAdvertiser({
+    metadata,
+    startImpl(advertisementMetadata) {
+      calls.push(["start", advertisementMetadata]);
+    },
+    stopImpl(advertisementMetadata) {
+      calls.push(["stop", advertisementMetadata]);
+    },
+  });
+
+  advertiser.start();
+  advertiser.start();
+  advertiser.stop();
+  advertiser.stop();
+
+  assert.deepEqual(calls, [
+    ["start", metadata],
+    ["stop", metadata],
+  ]);
 });

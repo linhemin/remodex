@@ -33,6 +33,10 @@ const {
   resolveBridgeRelaySession,
 } = require("./secure-device-state");
 const { createBridgeSecureTransport } = require("./secure-transport");
+const {
+  buildAdvertisementMetadata,
+  createLocalRelayAdvertiser,
+} = require("./local-relay-advertiser");
 const { createRolloutLiveMirrorController } = require("./rollout-live-mirror");
 
 const execFileAsync = promisify(execFile);
@@ -62,6 +66,13 @@ function startBridge({
   deviceState = relaySession.deviceState;
   const sessionId = relaySession.sessionId;
   const relaySessionUrl = `${relayBaseUrl}/${sessionId}`;
+  const localRelayAdvertiser = createLocalRelayAdvertiser({
+    metadata: buildAdvertisementMetadata({
+      macDeviceId: deviceState.macDeviceId,
+      displayName: os.hostname(),
+      relayPort: resolveRelayPort(relayBaseUrl),
+    }),
+  });
   const notificationSecret = randomBytes(24).toString("hex");
   const desktopRefresher = new CodexDesktopRefresher({
     enabled: config.refreshEnabled,
@@ -284,6 +295,7 @@ function startBridge({
     printQR(pairingPayload);
   }
   pushServiceClient.logUnavailable();
+  localRelayAdvertiser.start();
   connectRelay();
 
   codex.onMessage((message) => {
@@ -308,6 +320,7 @@ function startBridge({
     });
     isShuttingDown = true;
     clearReconnectTimer();
+    localRelayAdvertiser.stop();
     stopContextUsageWatcher();
     rolloutLiveMirror?.stopAll();
     desktopRefresher.handleTransportReset();
@@ -321,10 +334,12 @@ function startBridge({
   process.on("SIGINT", () => shutdown(codex, () => socket, () => {
     isShuttingDown = true;
     clearReconnectTimer();
+    localRelayAdvertiser.stop();
   }));
   process.on("SIGTERM", () => shutdown(codex, () => socket, () => {
     isShuttingDown = true;
     clearReconnectTimer();
+    localRelayAdvertiser.stop();
   }));
 
   // Routes decrypted app payloads through the same bridge handlers as before.
@@ -839,6 +854,19 @@ function buildMacRegistration(deviceState) {
     trustedPhoneDeviceId: normalizeNonEmptyString(trustedPhoneEntry?.[0]),
     trustedPhonePublicKey: normalizeNonEmptyString(trustedPhoneEntry?.[1]),
   };
+}
+
+function resolveRelayPort(relayBaseUrl) {
+  try {
+    const relayUrl = new URL(relayBaseUrl);
+    if (relayUrl.port) {
+      return relayUrl.port;
+    }
+
+    return relayUrl.protocol === "wss:" ? "443" : "80";
+  } catch {
+    return undefined;
+  }
 }
 
 function shutdown(codex, getSocket, beforeExit = () => {}) {
