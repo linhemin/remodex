@@ -196,6 +196,26 @@ enum CodexConnectionPhase: Equatable, Sendable {
     case connected
 }
 
+enum CodexConnectionPathStatus: Equatable, Sendable {
+    case notConnected
+    case lanDirect
+    case privateOverlay
+    case remoteRelay
+
+    var label: String {
+        switch self {
+        case .notConnected:
+            return "Not connected"
+        case .lanDirect:
+            return "LAN direct"
+        case .privateOverlay:
+            return "Private overlay"
+        case .remoteRelay:
+            return "Remote relay"
+        }
+    }
+}
+
 enum CodexPendingThreadComposerAction: Equatable, Sendable {
     case codeReview(target: CodexPendingCodeReviewTarget)
 }
@@ -385,6 +405,8 @@ final class CodexService {
     @ObservationIgnored var trustedSessionResolverByRelayURLOverride: ((String) async throws -> CodexTrustedSessionResolveResponse)?
     // Test hook: injects ranked reconnect candidates without Bonjour/network dependencies.
     @ObservationIgnored var discoveryTestOverride: [RelayDiscoveryCandidate]?
+    // Test hook: injects live Bonjour candidates without creating a real browser.
+    @ObservationIgnored var bonjourDiscoveryOverride: (() async -> [RelayDiscoveryCandidate])?
     var streamingAssistantMessageByTurnID: [String: String] = [:]
     var streamingSystemMessageByItemID: [String: String] = [:]
     /// Rich metadata for command execution tool calls, keyed by itemId.
@@ -691,7 +713,7 @@ final class CodexService {
     }
 
     // Combines remembered local, overlay, and saved relay endpoints into one ordered reconnect list.
-    func rankReconnectCandidates() -> [RelayDiscoveryCandidate] {
+    func rankReconnectCandidates(liveBonjourCandidates: [RelayDiscoveryCandidate] = []) -> [RelayDiscoveryCandidate] {
         if let discoveryTestOverride {
             return RelayDiscoveryCoordinator.rankCandidates(
                 discoveryTestOverride,
@@ -699,7 +721,18 @@ final class CodexService {
             )
         }
 
-        var candidates: [RelayDiscoveryCandidate] = []
+        var candidates: [RelayDiscoveryCandidate] = liveBonjourCandidates.map { candidate in
+            guard candidate.source == .bonjour, candidate.discoveredAt == nil else {
+                return candidate
+            }
+
+            return RelayDiscoveryCandidate(
+                source: candidate.source,
+                url: candidate.url,
+                macDeviceId: candidate.macDeviceId,
+                discoveredAt: Date()
+            )
+        }
 
         if let trustedMac = preferredTrustedMacRecord {
             let macDeviceId = trustedMac.macDeviceId
@@ -732,6 +765,39 @@ final class CodexService {
             )
         }
 
+        return RelayDiscoveryCoordinator.rankCandidates(
+            candidates,
+            preferredMacDeviceId: preferredTrustedMacDeviceId
+        )
+    }
+
+    @MainActor
+    func discoverBonjourReconnectCandidates(timeoutNanoseconds: UInt64 = 1_000_000_000) async -> [RelayDiscoveryCandidate] {
+        if let bonjourDiscoveryOverride {
+            return RelayDiscoveryCoordinator.rankCandidates(
+                await bonjourDiscoveryOverride(),
+                preferredMacDeviceId: preferredTrustedMacDeviceId
+            )
+        }
+
+        guard hasReconnectCandidate else {
+            return []
+        }
+
+        if localNetworkAuthorizationStatus == .denied {
+            return []
+        }
+
+        if localNetworkAuthorizationStatus != .granted {
+            let requester = LocalNetworkAuthorizationRequester()
+            localNetworkAuthorizationStatus = await requester.request(timeoutNanoseconds: timeoutNanoseconds)
+            guard localNetworkAuthorizationStatus == .granted else {
+                return []
+            }
+        }
+
+        let browser = RelayBonjourDiscoveryBrowser()
+        let candidates = await browser.discover(timeoutNanoseconds: timeoutNanoseconds)
         return RelayDiscoveryCoordinator.rankCandidates(
             candidates,
             preferredMacDeviceId: preferredTrustedMacDeviceId

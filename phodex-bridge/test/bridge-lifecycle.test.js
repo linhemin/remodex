@@ -73,7 +73,7 @@ test("startBridge stops the local relay advertiser before exiting on fatal relay
     });
 
     assert.ok(state.sockets.length > 0, "expected relay socket to be created");
-    const socket = state.sockets[0];
+    const socket = state.sockets.find((entry) => entry.url.startsWith("ws://relay.local:9000/relay/"));
     assert.ok(typeof socket.handlers.get("close") === "function", "expected relay close handler to be registered");
 
     assert.throws(
@@ -86,6 +86,45 @@ test("startBridge stops the local relay advertiser before exiting on fatal relay
       "stop",
       "exit:0",
     ]);
+  } finally {
+    state.restore();
+  }
+});
+
+test("startBridge advertises the embedded local relay instead of the remote relay port", () => {
+  const state = loadBridgeWithStubs();
+  try {
+    const bridge = requireFreshBridge();
+
+    bridge.startBridge({
+      config: {
+        relayUrl: "wss://relay.example/relay",
+        refreshEnabled: false,
+        refreshDebounceMs: 0,
+        refreshCommand: "",
+        codexBundleId: "com.example.codex",
+        codexAppPath: "/Applications/Codex.app",
+        pushServiceUrl: "",
+        pushPreviewMaxChars: 0,
+        codexEndpoint: "",
+      },
+      printPairingQr: false,
+      onBridgeStatus() {},
+    });
+
+    assert.deepEqual(state.localRelayListenArgs, {
+      port: 0,
+      host: "0.0.0.0",
+    });
+    assert.equal(state.localRelayAdvertiserMetadata?.relayPort, "9100");
+    assert.equal(state.localRelayAdvertiserMetadata?.relayPath, "/relay");
+    assert.deepEqual(
+      state.sockets.map((socket) => socket.url).sort(),
+      [
+        "wss://relay.example/relay/session-1",
+        "ws://127.0.0.1:9100/relay/session-1",
+      ].sort()
+    );
   } finally {
     state.restore();
   }
@@ -105,6 +144,8 @@ function loadBridgeWithStubs() {
     events: [],
     onError: null,
     sockets: [],
+    localRelayListenArgs: null,
+    localRelayAdvertiserMetadata: null,
   };
 
   const fakeWebSocket = class FakeWebSocket {
@@ -270,6 +311,7 @@ function loadBridgeWithStubs() {
         return metadata;
       },
       createLocalRelayAdvertiser({ metadata } = {}) {
+        state.localRelayAdvertiserMetadata = metadata;
         return {
           start() {
             state.events.push("start");
@@ -279,6 +321,28 @@ function loadBridgeWithStubs() {
           },
           get metadata() {
             return metadata;
+          },
+        };
+      },
+    },
+    "../../relay/server": {
+      createRelayServer() {
+        return {
+          server: {
+            listen(port, host, callback) {
+              state.localRelayListenArgs = { port, host };
+              callback?.();
+            },
+            address() {
+              return {
+                address: "0.0.0.0",
+                family: "IPv4",
+                port: 9100,
+              };
+            },
+            close(callback) {
+              callback?.();
+            },
           },
         };
       },

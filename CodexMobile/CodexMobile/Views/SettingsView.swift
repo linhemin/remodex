@@ -147,6 +147,13 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            HStack {
+                Text("Connection path")
+                Spacer()
+                Text(codex.currentConnectionPathStatus.label)
+                    .foregroundStyle(.secondary)
+            }
+
             if let error = codex.lastErrorMessage, !error.isEmpty {
                 Text(error)
                     .font(AppFont.caption())

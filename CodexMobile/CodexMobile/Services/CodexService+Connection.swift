@@ -965,6 +965,23 @@ extension CodexService {
         relayHostCategory(for: url) != .neither
     }
 
+    var currentConnectionPathStatus: CodexConnectionPathStatus {
+        guard isConnected,
+              let relayUrl,
+              let url = URL(string: relayUrl) else {
+            return .notConnected
+        }
+
+        switch relayHostCategory(for: url) {
+        case .local:
+            return .lanDirect
+        case .overlay:
+            return .privateOverlay
+        case .neither:
+            return .remoteRelay
+        }
+    }
+
     func relayHostCategory(for url: URL) -> CodexRelayHostCategory {
         guard let host = url.host?.lowercased() else {
             return .neither

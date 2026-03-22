@@ -200,6 +200,40 @@ final class CodexServiceConnectionErrorTests: XCTestCase {
         ])
     }
 
+    func testCurrentConnectionPathStatusIsNotConnectedWhenOffline() {
+        let service = makeService()
+
+        XCTAssertEqual(service.currentConnectionPathStatus, .notConnected)
+        XCTAssertEqual(service.currentConnectionPathStatus.label, "Not connected")
+    }
+
+    func testCurrentConnectionPathStatusUsesLanDirectForLocalRelay() {
+        let service = makeService()
+        service.isConnected = true
+        service.relayUrl = "ws://macbook-pro.local:9000/relay"
+
+        XCTAssertEqual(service.currentConnectionPathStatus, .lanDirect)
+        XCTAssertEqual(service.currentConnectionPathStatus.label, "LAN direct")
+    }
+
+    func testCurrentConnectionPathStatusUsesPrivateOverlayForOverlayRelay() {
+        let service = makeService()
+        service.isConnected = true
+        service.relayUrl = "ws://my-mac.ts.net:9000/relay"
+
+        XCTAssertEqual(service.currentConnectionPathStatus, .privateOverlay)
+        XCTAssertEqual(service.currentConnectionPathStatus.label, "Private overlay")
+    }
+
+    func testCurrentConnectionPathStatusUsesRemoteRelayForNonLocalHost() {
+        let service = makeService()
+        service.isConnected = true
+        service.relayUrl = "wss://relay.example/relay"
+
+        XCTAssertEqual(service.currentConnectionPathStatus, .remoteRelay)
+        XCTAssertEqual(service.currentConnectionPathStatus.label, "Remote relay")
+    }
+
     func testPrepareForConnectionAttemptPreservesFreshQRHandshakeState() async {
         let service = makeService()
         let payload = CodexPairingQRPayload(

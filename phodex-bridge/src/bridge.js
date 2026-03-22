@@ -32,7 +32,10 @@ const {
   loadOrCreateBridgeDeviceState,
   resolveBridgeRelaySession,
 } = require("./secure-device-state");
-const { createBridgeSecureTransport } = require("./secure-transport");
+const {
+  createBridgeSecureTransport,
+  SECURE_PROTOCOL_VERSION,
+} = require("./secure-transport");
 const {
   buildAdvertisementMetadata,
   createLocalRelayAdvertiser,
@@ -66,13 +69,8 @@ function startBridge({
   deviceState = relaySession.deviceState;
   const sessionId = relaySession.sessionId;
   const relaySessionUrl = `${relayBaseUrl}/${sessionId}`;
-  const localRelayAdvertiser = createLocalRelayAdvertiser({
-    metadata: buildAdvertisementMetadata({
-      macDeviceId: deviceState.macDeviceId,
-      displayName: os.hostname(),
-      relayPort: resolveRelayPort(relayBaseUrl),
-    }),
-  });
+  let localRelayAdvertiser = createNoopLocalRelayAdvertiser();
+  let localRelayRuntime = createNoopLocalRelayRuntime();
   const notificationSecret = randomBytes(24).toString("hex");
   const desktopRefresher = new CodexDesktopRefresher({
     enabled: config.refreshEnabled,
@@ -96,10 +94,13 @@ function startBridge({
   });
 
   // Keep the local Codex runtime alive across transient relay disconnects.
-  let socket = null;
+  let remoteSocket = null;
+  let localSocket = null;
+  let activeSocket = null;
   let isShuttingDown = false;
   let reconnectAttempt = 0;
   let reconnectTimer = null;
+  let localReconnectTimer = null;
   let lastConnectionStatus = null;
   let codexHandshakeState = config.codexEndpoint ? "warm" : "cold";
   const forwardedInitializeRequestIds = new Set();
@@ -129,11 +130,18 @@ function startBridge({
   // Keeps one stable sender identity across reconnects so buffered replay state
   // reflects what actually made it onto the current relay socket.
   function sendRelayWireMessage(wireMessage) {
-    if (socket?.readyState !== WebSocket.OPEN) {
+    const targetSocket = activeSocket?.readyState === WebSocket.OPEN
+      ? activeSocket
+      : remoteSocket?.readyState === WebSocket.OPEN
+        ? remoteSocket
+        : localSocket?.readyState === WebSocket.OPEN
+          ? localSocket
+          : null;
+    if (!targetSocket) {
       return false;
     }
 
-    socket.send(wireMessage);
+    targetSocket.send(wireMessage);
     return true;
   }
   // Only the spawned local runtime needs rollout mirroring; a real endpoint
@@ -170,6 +178,7 @@ function startBridge({
       lastError: error.message,
     });
     localRelayAdvertiser.stop();
+    localRelayRuntime.close();
     if (config.codexEndpoint) {
       console.error(`[remodex] Failed to connect to Codex endpoint: ${config.codexEndpoint}`);
     } else {
@@ -188,6 +197,15 @@ function startBridge({
 
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+
+  function clearLocalReconnectTimer() {
+    if (!localReconnectTimer) {
+      return;
+    }
+
+    clearTimeout(localReconnectTimer);
+    localReconnectTimer = null;
   }
 
   // Keeps npm start output compact by emitting only high-signal connection states.
@@ -214,10 +232,12 @@ function startBridge({
 
     if (closeCode === 4000 || closeCode === 4001) {
       logConnectionStatus("disconnected");
-      shutdown(codex, () => socket, () => {
+      shutdown(codex, () => [remoteSocket, localSocket], () => {
         isShuttingDown = true;
         clearReconnectTimer();
+        clearLocalReconnectTimer();
         localRelayAdvertiser.stop();
+        localRelayRuntime.close();
       });
       return;
     }
@@ -231,17 +251,32 @@ function startBridge({
     logConnectionStatus("connecting");
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      connectRelay();
+      connectRemoteRelay();
     }, delayMs);
   }
 
-  function connectRelay() {
-    if (isShuttingDown) {
+  function scheduleLocalRelayReconnect() {
+    if (isShuttingDown || localReconnectTimer) {
       return;
     }
 
-    logConnectionStatus("connecting");
-    const nextSocket = new WebSocket(relaySessionUrl, {
+    localReconnectTimer = setTimeout(() => {
+      localReconnectTimer = null;
+      connectLocalRelay();
+    }, 1_000);
+  }
+
+  function bindActiveRelaySocket(nextSocket) {
+    activeSocket = nextSocket;
+    secureTransport.bindLiveSendWireMessage(sendRelayWireMessage);
+  }
+
+  function openSocket({ sessionUrl, kind, onOpen, onClose }) {
+    if (isShuttingDown) {
+      return null;
+    }
+
+    const nextSocket = new WebSocket(sessionUrl, {
       // The relay uses this per-session secret to authenticate the first push registration.
       headers: {
         "x-role": "mac",
@@ -249,18 +284,20 @@ function startBridge({
         ...buildMacRegistrationHeaders(deviceState),
       },
     });
-    socket = nextSocket;
+    if (kind === "remote") {
+      remoteSocket = nextSocket;
+    } else {
+      localSocket = nextSocket;
+    }
 
     nextSocket.on("open", () => {
-      clearReconnectTimer();
-      reconnectAttempt = 0;
-      logConnectionStatus("connected");
-      secureTransport.bindLiveSendWireMessage(sendRelayWireMessage);
-      sendRelayRegistrationUpdate(deviceState);
+      bindActiveRelaySocket(nextSocket);
+      onOpen?.(nextSocket);
     });
 
     nextSocket.on("message", (data) => {
       const message = typeof data === "string" ? data : data.toString("utf8");
+      bindActiveRelaySocket(nextSocket);
       if (secureTransport.handleIncomingWireMessage(message, {
         sendControlMessage(controlMessage) {
           if (nextSocket.readyState === WebSocket.OPEN) {
@@ -276,18 +313,73 @@ function startBridge({
     });
 
     nextSocket.on("close", (code) => {
-      logConnectionStatus("disconnected");
-      if (socket === nextSocket) {
-        socket = null;
+      if (kind === "remote" && remoteSocket === nextSocket) {
+        remoteSocket = null;
       }
-      stopContextUsageWatcher();
-      rolloutLiveMirror?.stopAll();
-      desktopRefresher.handleTransportReset();
-      scheduleRelayReconnect(code);
+      if (kind === "local" && localSocket === nextSocket) {
+        localSocket = null;
+      }
+      if (activeSocket === nextSocket) {
+        activeSocket = remoteSocket?.readyState === WebSocket.OPEN
+          ? remoteSocket
+          : localSocket?.readyState === WebSocket.OPEN
+            ? localSocket
+            : null;
+        secureTransport.bindLiveSendWireMessage(sendRelayWireMessage);
+      }
+      onClose?.(code);
     });
 
     nextSocket.on("error", () => {
-      logConnectionStatus("disconnected");
+      if (kind === "remote") {
+        logConnectionStatus("disconnected");
+      }
+    });
+
+    return nextSocket;
+  }
+
+  function connectRemoteRelay() {
+    if (isShuttingDown) {
+      return;
+    }
+
+    logConnectionStatus("connecting");
+    openSocket({
+      sessionUrl: relaySessionUrl,
+      kind: "remote",
+      onOpen(nextSocket) {
+        clearReconnectTimer();
+        reconnectAttempt = 0;
+        logConnectionStatus("connected");
+        sendRelayRegistrationUpdate(deviceState, nextSocket);
+      },
+      onClose(code) {
+        logConnectionStatus("disconnected");
+        stopContextUsageWatcher();
+        rolloutLiveMirror?.stopAll();
+        desktopRefresher.handleTransportReset();
+        scheduleRelayReconnect(code);
+      },
+    });
+  }
+
+  function connectLocalRelay() {
+    if (!localRelayRuntime.bridgeRelayBaseUrl || isShuttingDown) {
+      return;
+    }
+
+    const sessionUrl = `${localRelayRuntime.bridgeRelayBaseUrl}/${sessionId}`;
+    openSocket({
+      sessionUrl,
+      kind: "local",
+      onOpen(nextSocket) {
+        clearLocalReconnectTimer();
+        sendRelayRegistrationUpdate(deviceState, nextSocket);
+      },
+      onClose() {
+        scheduleLocalRelayReconnect();
+      },
     });
   }
 
@@ -297,8 +389,28 @@ function startBridge({
     printQR(pairingPayload);
   }
   pushServiceClient.logUnavailable();
-  localRelayAdvertiser.start();
-  connectRelay();
+  localRelayRuntime = startEmbeddedLocalRelayRuntime({
+    macDeviceId: deviceState.macDeviceId,
+    displayName: os.hostname(),
+    onReady(runtime) {
+      localRelayRuntime = runtime;
+      localRelayAdvertiser = createLocalRelayAdvertiser({
+        metadata: buildAdvertisementMetadata({
+          macDeviceId: deviceState.macDeviceId,
+          displayName: os.hostname(),
+          relayPort: runtime.advertisedPort,
+          relayPath: runtime.relayPath,
+          protocolVersion: SECURE_PROTOCOL_VERSION,
+        }),
+      });
+      localRelayAdvertiser.start();
+      connectLocalRelay();
+    },
+    onError(error) {
+      console.warn(`[remodex] Local relay unavailable: ${error.message}`);
+    },
+  });
+  connectRemoteRelay();
 
   codex.onMessage((message) => {
     if (handleBridgeManagedCodexResponse(message)) {
@@ -322,26 +434,31 @@ function startBridge({
     });
     isShuttingDown = true;
     clearReconnectTimer();
+    clearLocalReconnectTimer();
     localRelayAdvertiser.stop();
+    localRelayRuntime.close();
     stopContextUsageWatcher();
     rolloutLiveMirror?.stopAll();
     desktopRefresher.handleTransportReset();
     failBridgeManagedCodexRequests(new Error("Codex transport closed before the bridge request completed."));
     forwardedRequestMethodsById.clear();
-    if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
-      socket.close();
-    }
+    closeRelaySocket(remoteSocket);
+    closeRelaySocket(localSocket);
   });
 
-  process.on("SIGINT", () => shutdown(codex, () => socket, () => {
+  process.on("SIGINT", () => shutdown(codex, () => [remoteSocket, localSocket], () => {
     isShuttingDown = true;
     clearReconnectTimer();
+    clearLocalReconnectTimer();
     localRelayAdvertiser.stop();
+    localRelayRuntime.close();
   }));
-  process.on("SIGTERM", () => shutdown(codex, () => socket, () => {
+  process.on("SIGTERM", () => shutdown(codex, () => [remoteSocket, localSocket], () => {
     isShuttingDown = true;
     clearReconnectTimer();
+    clearLocalReconnectTimer();
     localRelayAdvertiser.stop();
+    localRelayRuntime.close();
   }));
 
   // Routes decrypted app payloads through the same bridge handlers as before.
@@ -818,18 +935,27 @@ function startBridge({
     onBridgeStatus?.(status);
   }
 
-  // Refreshes the relay's trusted-mac index after the QR bootstrap locks in a phone identity.
-  function sendRelayRegistrationUpdate(nextDeviceState) {
+  function sendRelayRegistrationUpdate(nextDeviceState, targetSocket) {
     deviceState = nextDeviceState;
-    if (socket?.readyState !== WebSocket.OPEN) {
+    if (targetSocket) {
+      sendRelayRegistrationUpdateToSocket(deviceState, targetSocket);
       return;
     }
 
-    socket.send(JSON.stringify({
-      kind: "relayMacRegistration",
-      registration: buildMacRegistration(nextDeviceState),
-    }));
+    sendRelayRegistrationUpdateToSocket(deviceState, remoteSocket);
+    sendRelayRegistrationUpdateToSocket(deviceState, localSocket);
   }
+}
+
+function sendRelayRegistrationUpdateToSocket(deviceState, targetSocket) {
+  if (targetSocket?.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  targetSocket.send(JSON.stringify({
+    kind: "relayMacRegistration",
+    registration: buildMacRegistration(deviceState),
+  }));
 }
 
 // Registers the canonical Mac identity and the one trusted iPhone allowed for auto-resolve.
@@ -858,25 +984,89 @@ function buildMacRegistration(deviceState) {
   };
 }
 
-function resolveRelayPort(relayBaseUrl) {
+function startEmbeddedLocalRelayRuntime({
+  bindHost = "0.0.0.0",
+  port = 0,
+  onReady = () => {},
+  onError = () => {},
+}) {
+  let relayServerFactory;
   try {
-    const relayUrl = new URL(relayBaseUrl);
-    if (relayUrl.port) {
-      return relayUrl.port;
-    }
+    ({ createRelayServer: relayServerFactory } = require("../../relay/server"));
+  } catch (error) {
+    onError(error);
+    return createNoopLocalRelayRuntime();
+  }
 
-    return relayUrl.protocol === "wss:" ? "443" : "80";
-  } catch {
-    return undefined;
+  try {
+    const { server } = relayServerFactory();
+    server.on?.("error", onError);
+    server.listen(port, bindHost, () => {
+      const address = server.address();
+      const advertisedPort = resolveListeningPort(address);
+      if (!advertisedPort) {
+        onError(new Error("The embedded local relay did not expose a usable listening port."));
+        return;
+      }
+
+      onReady({
+        advertisedPort: String(advertisedPort),
+        relayPath: "/relay",
+        bridgeRelayBaseUrl: `ws://127.0.0.1:${advertisedPort}/relay`,
+        close(callback) {
+          server.close(callback);
+        },
+      });
+    });
+
+    return {
+      close(callback) {
+        server.close(callback);
+      },
+    };
+  } catch (error) {
+    onError(error);
+    return createNoopLocalRelayRuntime();
   }
 }
 
-function shutdown(codex, getSocket, beforeExit = () => {}) {
-  beforeExit();
+function resolveListeningPort(address) {
+  if (!address || typeof address === "string") {
+    return 0;
+  }
 
-  const socket = getSocket();
+  const port = Number(address.port);
+  return Number.isInteger(port) && port > 0 ? port : 0;
+}
+
+function closeRelaySocket(socket) {
   if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
     socket.close();
+  }
+}
+
+function createNoopLocalRelayAdvertiser() {
+  return {
+    start() {},
+    stop() {},
+  };
+}
+
+function createNoopLocalRelayRuntime() {
+  return {
+    advertisedPort: "",
+    relayPath: "/relay",
+    bridgeRelayBaseUrl: "",
+    close() {},
+  };
+}
+
+function shutdown(codex, getSockets, beforeExit = () => {}) {
+  beforeExit();
+
+  const sockets = getSockets();
+  for (const socket of Array.isArray(sockets) ? sockets : [sockets]) {
+    closeRelaySocket(socket);
   }
 
   codex.shutdown();

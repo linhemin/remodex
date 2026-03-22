@@ -6,7 +6,43 @@
 
 import Foundation
 
+struct RelayBonjourResolvedService: Equatable, Sendable {
+    let name: String
+    let hostName: String
+    let port: Int
+    let txtRecord: [String: String]
+}
+
 enum RelayDiscoveryCoordinator {
+    nonisolated static func bonjourCandidate(from service: RelayBonjourResolvedService) -> RelayDiscoveryCandidate? {
+        let normalizedHost = normalizedBonjourHost(service.hostName)
+        guard !normalizedHost.isEmpty, service.port > 0 else {
+            return nil
+        }
+
+        let relayPath = service.txtRecord["relayPath"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? service.txtRecord["relayPath"]!
+            : "/relay"
+        let macDeviceId = service.txtRecord["macDeviceId"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var components = URLComponents()
+        components.scheme = "ws"
+        components.host = normalizedHost
+        components.port = service.port
+        components.path = relayPath
+
+        guard let url = components.url else {
+            return nil
+        }
+
+        return RelayDiscoveryCandidate(
+            source: .bonjour,
+            url: url,
+            macDeviceId: macDeviceId?.isEmpty == false ? macDeviceId : nil,
+            discoveredAt: nil
+        )
+    }
+
     nonisolated static func rankCandidates(
         _ candidates: [RelayDiscoveryCandidate],
         preferredMacDeviceId: String? = nil
@@ -103,5 +139,143 @@ enum RelayDiscoveryCoordinator {
         }
 
         return "/" + parts.joined(separator: "/")
+    }
+
+    private nonisolated static func normalizedBonjourHost(_ hostName: String) -> String {
+        let trimmed = hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return ""
+        }
+
+        if trimmed.hasSuffix(".") {
+            return String(trimmed.dropLast())
+        }
+
+        return trimmed
+    }
+}
+
+@MainActor
+final class RelayBonjourDiscoveryBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
+    private let serviceType = "_remodex._tcp."
+    private let serviceDomain = "local."
+
+    private var browser: NetServiceBrowser?
+    private var continuation: CheckedContinuation<[RelayDiscoveryCandidate], Never>?
+    private var timeoutTask: Task<Void, Never>?
+    private var discoveredServices: [String: RelayBonjourResolvedService] = [:]
+    private var resolvingServices: [String: NetService] = [:]
+    private var isFinished = false
+
+    func discover(timeoutNanoseconds: UInt64 = 1_000_000_000) async -> [RelayDiscoveryCandidate] {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+
+            let browser = NetServiceBrowser()
+            browser.delegate = self
+            self.browser = browser
+            browser.searchForServices(ofType: serviceType, inDomain: serviceDomain)
+
+            timeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                self?.finish()
+            }
+        }
+    }
+
+    func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+        let key = serviceKey(for: service)
+        resolvingServices[key] = service
+        service.delegate = self
+        service.resolve(withTimeout: 1.0)
+    }
+
+    func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
+        let key = serviceKey(for: service)
+        resolvingServices.removeValue(forKey: key)?.stop()
+        discoveredServices.removeValue(forKey: key)
+    }
+
+    func netServiceBrowserDidStopSearch(_ browser: NetServiceBrowser) {
+        finish()
+    }
+
+    func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String : NSNumber]) {
+        finish()
+    }
+
+    func netServiceDidResolveAddress(_ sender: NetService) {
+        let key = serviceKey(for: sender)
+        resolvingServices[key] = sender
+
+        guard let hostName = sender.hostName, sender.port > 0 else {
+            return
+        }
+
+        discoveredServices[key] = RelayBonjourResolvedService(
+            name: sender.name,
+            hostName: hostName,
+            port: sender.port,
+            txtRecord: decodeTXTRecord(sender.txtRecordData())
+        )
+    }
+
+    func netService(_ sender: NetService, didNotResolve errorDict: [String : NSNumber]) {
+        resolvingServices.removeValue(forKey: serviceKey(for: sender))
+    }
+}
+
+private extension RelayBonjourDiscoveryBrowser {
+    func finish() {
+        guard !isFinished else {
+            return
+        }
+        isFinished = true
+
+        timeoutTask?.cancel()
+        timeoutTask = nil
+
+        browser?.stop()
+        browser = nil
+
+        for service in resolvingServices.values {
+            service.stop()
+        }
+        resolvingServices.removeAll()
+
+        let now = Date()
+        let candidates = discoveredServices.values
+            .compactMap(RelayDiscoveryCoordinator.bonjourCandidate(from:))
+            .map { candidate in
+                RelayDiscoveryCandidate(
+                    source: candidate.source,
+                    url: candidate.url,
+                    macDeviceId: candidate.macDeviceId,
+                    discoveredAt: now
+                )
+            }
+
+        discoveredServices.removeAll()
+        continuation?.resume(returning: candidates)
+        continuation = nil
+    }
+
+    func serviceKey(for service: NetService) -> String {
+        "\(service.name)|\(service.type)|\(service.domain)"
+    }
+
+    func decodeTXTRecord(_ data: Data?) -> [String: String] {
+        guard let data else {
+            return [:]
+        }
+
+        return NetService.dictionary(fromTXTRecord: data).reduce(into: [:]) { partialResult, item in
+            guard let value = String(data: item.value, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else {
+                return
+            }
+            partialResult[item.key] = value
+        }
     }
 }

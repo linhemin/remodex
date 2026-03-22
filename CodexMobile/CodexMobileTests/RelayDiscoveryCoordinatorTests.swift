@@ -9,6 +9,26 @@ import XCTest
 @testable import CodexMobile
 
 final class RelayDiscoveryCoordinatorTests: XCTestCase {
+    func testBonjourCandidateUsesResolvedServiceMetadata() {
+        let service = RelayBonjourResolvedService(
+            name: "Desk Mac",
+            hostName: "desk-mac.local.",
+            port: 9000,
+            txtRecord: [
+                "macDeviceId": "mac-1",
+                "displayName": "Desk Mac",
+                "relayPath": "/relay",
+                "protocolVersion": "1",
+            ]
+        )
+
+        let candidate = RelayDiscoveryCoordinator.bonjourCandidate(from: service)
+
+        XCTAssertEqual(candidate?.url.absoluteString, "ws://desk-mac.local:9000/relay")
+        XCTAssertEqual(candidate?.macDeviceId, "mac-1")
+        XCTAssertEqual(candidate?.discoveredAt, nil)
+    }
+
     func testRankCandidatesPrefersBonjourThenOverlayThenSavedRelay() {
         let ranked = RelayDiscoveryCoordinator.rankCandidates([
             .savedRelay("wss://relay.example/relay", macDeviceId: "mac-1"),

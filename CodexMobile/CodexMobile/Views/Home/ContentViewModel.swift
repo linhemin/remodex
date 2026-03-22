@@ -13,7 +13,14 @@ final class ContentViewModel {
     private var hasAttemptedInitialAutoConnect = false
     private var lastSidebarOpenSyncAt: Date = .distantPast
     private let autoReconnectBackoffNanoseconds: [UInt64] = [1_000_000_000, 3_000_000_000]
+    private let lanPromotionCooldown: TimeInterval = 15
     private(set) var isRunningAutoReconnect = false
+    private(set) var isRunningLANPromotion = false
+    private var lastLANPromotionAttemptAt: Date = .distantPast
+
+    @ObservationIgnored var nowProvider: () -> Date = Date.init
+    @ObservationIgnored var connectOverride: ((CodexService, String) async throws -> Void)?
+    @ObservationIgnored var disconnectOverride: ((CodexService, Bool) async -> Void)?
 
     var isAttemptingAutoReconnect: Bool {
         isRunningAutoReconnect
@@ -131,6 +138,11 @@ final class ContentViewModel {
 
     // Reconnects after benign background disconnects.
     func attemptAutoReconnectOnForegroundIfNeeded(codex: CodexService) async {
+        if codex.isConnected {
+            await attemptLANPromotionIfNeeded(codex: codex)
+            return
+        }
+
         guard codex.shouldAutoReconnectOnForeground, !isRunningAutoReconnect else {
             return
         }
@@ -222,10 +234,10 @@ extension ContentViewModel {
     }
 
     func connect(codex: CodexService, serverURL: String) async throws {
-        try await codex.connect(
+        try await connect(
+            codex: codex,
             serverURL: serverURL,
-            token: "",
-            role: "iphone"
+            allowLANPromotion: true
         )
     }
 
@@ -299,28 +311,89 @@ extension ContentViewModel {
         }
     }
 
+    func attemptLANPromotionIfNeeded(codex: CodexService) async {
+        guard shouldAttemptLANPromotion(codex: codex) else {
+            return
+        }
+
+        guard let currentRelayURL = codex.normalizedRelayURL,
+              let currentReconnectURL = codex.buildReconnectURL(baseRelayURL: currentRelayURL),
+              let targetMacDeviceID = codex.normalizedRelayMacDeviceId ?? codex.preferredTrustedMacDeviceId else {
+            return
+        }
+
+        isRunningLANPromotion = true
+        lastLANPromotionAttemptAt = nowProvider()
+        defer { isRunningLANPromotion = false }
+
+        let bonjourCandidates = RelayDiscoveryCoordinator.rankCandidates(
+            await codex.discoverBonjourReconnectCandidates().filter {
+                $0.source == .bonjour && $0.macDeviceId == targetMacDeviceID
+            },
+            preferredMacDeviceId: targetMacDeviceID
+        )
+
+        guard let candidate = bonjourCandidates.first(where: { candidate in
+            codex.relayHostCategory(for: candidate.url) == .local
+                && RelayDiscoveryCoordinator.normalizedRelayURL(from: candidate.url)?.absoluteString != currentRelayURL
+        }),
+            let promotedReconnectURL = await lanPromotionReconnectURL(
+                codex: codex,
+                candidateRelayURL: candidate.url.absoluteString
+            ) else {
+            return
+        }
+
+        await disconnect(codex: codex, preserveReconnectIntent: true)
+
+        do {
+            try await connect(
+                codex: codex,
+                serverURL: promotedReconnectURL,
+                allowLANPromotion: false
+            )
+        } catch {
+            try? await connect(
+                codex: codex,
+                serverURL: currentReconnectURL,
+                allowLANPromotion: false
+            )
+        }
+    }
+
     // Chooses the best reconnect path: resolve the live trusted-Mac session first, then fall back to the saved QR session.
     func preferredReconnectURL(codex: CodexService) async -> String? {
-        switch await trustedReconnectResolution(codex: codex) {
+        let liveBonjourCandidates = await codex.discoverBonjourReconnectCandidates()
+
+        switch await trustedReconnectResolution(
+            codex: codex,
+            liveBonjourCandidates: liveBonjourCandidates
+        ) {
         case .use(let resolvedURL):
             return resolvedURL
         case .fallbackToSaved:
-            return savedReconnectURL(codex: codex)
+            return savedReconnectURL(
+                codex: codex,
+                liveBonjourCandidates: liveBonjourCandidates
+            )
         case .stop:
             return nil
         }
     }
 
     // Resolves a trusted-Mac session when possible and tells the caller whether to use, fall back, or stop.
-    private func trustedReconnectResolution(codex: CodexService) async -> ReconnectURLResolution {
-        guard codex.hasTrustedMacReconnectCandidate else {
+    private func trustedReconnectResolution(
+        codex: CodexService,
+        liveBonjourCandidates: [RelayDiscoveryCandidate]
+    ) async -> ReconnectURLResolution {
+        guard codex.hasTrustedMacReconnectCandidate || !liveBonjourCandidates.isEmpty else {
             return .fallbackToSaved
         }
 
         var lastTrustedReconnectError: CodexTrustedSessionResolveError?
         var lastUnexpectedError: Error?
 
-        for candidate in codex.rankReconnectCandidates() {
+        for candidate in codex.rankReconnectCandidates(liveBonjourCandidates: liveBonjourCandidates) {
             do {
                 guard let trustedReconnectURL = try await resolvedTrustedReconnectURL(
                     codex: codex,
@@ -398,13 +471,69 @@ extension ContentViewModel {
     }
 
     // Reuses the last QR-resolved session when trusted lookup is unavailable or not yet supported end-to-end.
-    private func savedReconnectURL(codex: CodexService) -> String? {
-        for candidate in codex.rankReconnectCandidates() {
+    private func savedReconnectURL(
+        codex: CodexService,
+        liveBonjourCandidates: [RelayDiscoveryCandidate]
+    ) -> String? {
+        for candidate in codex.rankReconnectCandidates(liveBonjourCandidates: liveBonjourCandidates) {
             if let fullURL = codex.buildReconnectURL(baseRelayURL: candidate.url.absoluteString) {
                 return fullURL
             }
         }
 
         return nil
+    }
+
+    private func connect(
+        codex: CodexService,
+        serverURL: String,
+        allowLANPromotion: Bool
+    ) async throws {
+        if let connectOverride {
+            try await connectOverride(codex, serverURL)
+        } else {
+            try await codex.connect(
+                serverURL: serverURL,
+                token: "",
+                role: "iphone"
+            )
+        }
+
+        if allowLANPromotion {
+            await attemptLANPromotionIfNeeded(codex: codex)
+        }
+    }
+
+    private func disconnect(codex: CodexService, preserveReconnectIntent: Bool) async {
+        if let disconnectOverride {
+            await disconnectOverride(codex, preserveReconnectIntent)
+            return
+        }
+
+        await codex.disconnect(preserveReconnectIntent: preserveReconnectIntent)
+    }
+
+    private func shouldAttemptLANPromotion(codex: CodexService) -> Bool {
+        guard codex.isConnected,
+              codex.currentConnectionPathStatus == .remoteRelay,
+              !isRunningLANPromotion else {
+            return false
+        }
+
+        return nowProvider().timeIntervalSince(lastLANPromotionAttemptAt) >= lanPromotionCooldown
+    }
+
+    private func lanPromotionReconnectURL(
+        codex: CodexService,
+        candidateRelayURL: String
+    ) async -> String? {
+        if let trustedReconnectURL = try? await resolvedTrustedReconnectURL(
+            codex: codex,
+            relayURL: candidateRelayURL
+        ) {
+            return trustedReconnectURL
+        }
+
+        return codex.buildReconnectURL(baseRelayURL: candidateRelayURL)
     }
 }
