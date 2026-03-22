@@ -51,6 +51,9 @@ struct CodexTrustedMacRecord: Codable, Sendable {
     let macIdentityPublicKey: String
     let lastPairedAt: Date
     var relayURL: String? = nil
+    var lastLocalRelayURL: String? = nil
+    var lastOverlayRelayURL: String? = nil
+    var lastDiscoveredAt: Date? = nil
     var displayName: String? = nil
     var lastResolvedSessionId: String? = nil
     var lastResolvedAt: Date? = nil

@@ -504,16 +504,21 @@ private extension CodexService {
 
     func trustMac(deviceId: String, publicKey: String, relayURL: String?, displayName: String?) {
         let existing = trustedMacRegistry.records[deviceId]
-        trustedMacRegistry.records[deviceId] = CodexTrustedMacRecord(
+        var record = CodexTrustedMacRecord(
             macDeviceId: deviceId,
             macIdentityPublicKey: publicKey,
             lastPairedAt: Date(),
             relayURL: relayURL ?? existing?.relayURL,
+            lastLocalRelayURL: existing?.lastLocalRelayURL,
+            lastOverlayRelayURL: existing?.lastOverlayRelayURL,
+            lastDiscoveredAt: existing?.lastDiscoveredAt,
             displayName: displayName ?? existing?.displayName,
             lastResolvedSessionId: existing?.lastResolvedSessionId,
             lastResolvedAt: existing?.lastResolvedAt,
             lastUsedAt: Date()
         )
+        updateTrustedMacDiscoveryMetadata(&record, relayURL: relayURL)
+        trustedMacRegistry.records[deviceId] = record
         SecureStore.writeCodable(trustedMacRegistry, for: CodexSecureKeys.trustedMacRegistry)
         SecureStore.writeString(deviceId, for: CodexSecureKeys.lastTrustedMacDeviceId)
         lastTrustedMacDeviceId = deviceId
@@ -635,9 +640,31 @@ private extension CodexService {
             trustedMac.lastResolvedSessionId = resolved.sessionId
             trustedMac.lastResolvedAt = Date()
             trustedMac.lastUsedAt = Date()
+            updateTrustedMacDiscoveryMetadata(&trustedMac, relayURL: relayURL)
             trustedMacRegistry.records[resolved.macDeviceId] = trustedMac
             SecureStore.writeCodable(trustedMacRegistry, for: CodexSecureKeys.trustedMacRegistry)
         }
+    }
+
+    private func updateTrustedMacDiscoveryMetadata(
+        _ trustedMac: inout CodexTrustedMacRecord,
+        relayURL: String?
+    ) {
+        guard let relayURL = relayURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !relayURL.isEmpty,
+              let url = URL(string: relayURL) else {
+            return
+        }
+
+        switch relayHostCategory(for: url) {
+        case .local:
+            trustedMac.lastLocalRelayURL = relayURL
+        case .overlay:
+            trustedMac.lastOverlayRelayURL = relayURL
+        case .neither:
+            return
+        }
+        trustedMac.lastDiscoveredAt = Date()
     }
 
     private func trustedSessionResolveURL(from relayURL: String) -> URL? {

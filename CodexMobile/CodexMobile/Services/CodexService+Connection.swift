@@ -9,6 +9,12 @@ import Network
 import UIKit
 
 extension CodexService {
+    enum CodexRelayHostCategory {
+        case local
+        case overlay
+        case neither
+    }
+
     // Only close codes that prove the saved pairing/session can no longer be reused
     // should force a QR reset. Temporary delivery loss uses the dedicated `4004`
     // close so `4002` can stay available for "session unavailable right now" cases.
@@ -940,27 +946,44 @@ extension CodexService {
     }
 
     func requiresLocalNetworkAuthorization(for url: URL) -> Bool {
-        guard let host = url.host?.lowercased() else {
-            return false
-        }
-
-        return host.hasSuffix(".local")
-            || isPrivateIPv4Host(host)
-            || isLocalIPv6Host(host)
+        relayHostCategory(for: url) == .local
     }
 
     // Chooses the most direct relay transport for LAN-style hosts plus private overlays like Tailscale.
     // Tailscale's 100.64.0.0/10 range should bypass the WebSocket URL path that iOS may proxy.
     func prefersDirectRelayTransport(for url: URL) -> Bool {
+        relayHostCategory(for: url) != .neither
+    }
+
+    func relayHostCategory(for url: URL) -> CodexRelayHostCategory {
         guard let host = url.host?.lowercased() else {
-            return false
+            return .neither
         }
 
-        return host.hasSuffix(".local")
+        return relayHostCategory(for: host)
+    }
+
+    private func relayHostCategory(for host: String) -> CodexRelayHostCategory {
+        if isLocalRelayHost(host) {
+            return .local
+        }
+
+        if isOverlayRelayHost(host) {
+            return .overlay
+        }
+
+        return .neither
+    }
+
+    private func isLocalRelayHost(_ host: String) -> Bool {
+        host.hasSuffix(".local")
             || isPrivateIPv4Host(host)
-            || isCarrierGradePrivateIPv4Host(host)
-            || isTailscaleMagicDNSHost(host)
             || isLocalIPv6Host(host)
+    }
+
+    private func isOverlayRelayHost(_ host: String) -> Bool {
+        isCarrierGradePrivateIPv4Host(host)
+            || isTailscaleMagicDNSHost(host)
     }
 
     private func isPrivateIPv4Host(_ host: String) -> Bool {
