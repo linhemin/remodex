@@ -6,10 +6,14 @@
 
 import Foundation
 import XCTest
+import UserNotifications
 @testable import CodexMobile
 
 @MainActor
 final class CodexSecurePairingStateTests: XCTestCase {
+    private static var retainedServices: [CodexService] = []
+    private var defaultsSuiteNamesToClear: [String] = []
+
     override func setUp() {
         super.setUp()
         clearStoredSecureRelayState()
@@ -17,11 +21,15 @@ final class CodexSecurePairingStateTests: XCTestCase {
 
     override func tearDown() {
         clearStoredSecureRelayState()
+        for suiteName in defaultsSuiteNamesToClear {
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        }
+        defaultsSuiteNamesToClear.removeAll()
         super.tearDown()
     }
 
     func testRememberRelayPairingForcesFreshQRBootstrapEvenForTrustedMac() {
-        let service = CodexService()
+        let service = makeService()
         let macDeviceID = "mac-\(UUID().uuidString)"
         let originalPublicKey = Data(repeating: 1, count: 32).base64EncodedString()
         let freshQRPublicKey = Data(repeating: 2, count: 32).base64EncodedString()
@@ -50,7 +58,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testRememberRelayPairingShowsHandshakeStateForBrandNewMac() {
-        let service = CodexService()
+        let service = makeService()
         let freshQRPublicKey = Data(repeating: 4, count: 32).base64EncodedString()
 
         service.rememberRelayPairing(
@@ -70,7 +78,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testResetSecureTransportStatePreservesRePairRequiredState() {
-        let service = CodexService()
+        let service = makeService()
         service.relaySessionId = "session-\(UUID().uuidString)"
         service.relayUrl = "ws://relay.local/relay"
         service.secureConnectionState = .rePairRequired
@@ -83,7 +91,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testApplyingResolvedTrustedSessionResetsReplayCursorWhenLiveSessionChanges() {
-        let service = CodexService()
+        let service = makeService()
         let macDeviceID = "mac-\(UUID().uuidString)"
 
         service.relaySessionId = "stale-session"
@@ -111,7 +119,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testApplyingResolvedTrustedSessionKeepsReplayCursorWhenLiveSessionIsUnchanged() {
-        let service = CodexService()
+        let service = makeService()
         let macDeviceID = "mac-\(UUID().uuidString)"
 
         service.relaySessionId = "same-session"
@@ -138,6 +146,62 @@ final class CodexSecurePairingStateTests: XCTestCase {
         )
     }
 
+    func testApplyingResolvedTrustedSessionPersistsLocalRelayDiscoveryMetadata() {
+        let service = makeService()
+        let macDeviceID = "mac-\(UUID().uuidString)"
+        let relayURL = "ws://macbook-pro.local:9000/relay"
+
+        service.trustedMacRegistry.records[macDeviceID] = CodexTrustedMacRecord(
+            macDeviceId: macDeviceID,
+            macIdentityPublicKey: Data(repeating: 9, count: 32).base64EncodedString(),
+            lastPairedAt: Date()
+        )
+
+        service.applyResolvedTrustedSession(
+            CodexTrustedSessionResolveResponse(
+                ok: true,
+                macDeviceId: macDeviceID,
+                macIdentityPublicKey: Data(repeating: 10, count: 32).base64EncodedString(),
+                displayName: "Desk Mac",
+                sessionId: "fresh-session"
+            ),
+            relayURL: relayURL
+        )
+
+        let record = service.trustedMacRegistry.records[macDeviceID]
+        XCTAssertEqual(record?.lastLocalRelayURL, relayURL)
+        XCTAssertNil(record?.lastOverlayRelayURL)
+        XCTAssertNotNil(record?.lastDiscoveredAt)
+    }
+
+    func testApplyingResolvedTrustedSessionPersistsOverlayRelayDiscoveryMetadata() {
+        let service = makeService()
+        let macDeviceID = "mac-\(UUID().uuidString)"
+        let relayURL = "ws://100.122.27.82:9000/relay"
+
+        service.trustedMacRegistry.records[macDeviceID] = CodexTrustedMacRecord(
+            macDeviceId: macDeviceID,
+            macIdentityPublicKey: Data(repeating: 11, count: 32).base64EncodedString(),
+            lastPairedAt: Date()
+        )
+
+        service.applyResolvedTrustedSession(
+            CodexTrustedSessionResolveResponse(
+                ok: true,
+                macDeviceId: macDeviceID,
+                macIdentityPublicKey: Data(repeating: 12, count: 32).base64EncodedString(),
+                displayName: "Desk Mac",
+                sessionId: "fresh-session"
+            ),
+            relayURL: relayURL
+        )
+
+        let record = service.trustedMacRegistry.records[macDeviceID]
+        XCTAssertNil(record?.lastLocalRelayURL)
+        XCTAssertEqual(record?.lastOverlayRelayURL, relayURL)
+        XCTAssertNotNil(record?.lastDiscoveredAt)
+    }
+
     // Clears the persisted relay session keys touched by secure reconnect tests.
     private func clearStoredSecureRelayState() {
         SecureStore.deleteValue(for: CodexSecureKeys.relaySessionId)
@@ -148,5 +212,40 @@ final class CodexSecurePairingStateTests: XCTestCase {
         SecureStore.deleteValue(for: CodexSecureKeys.relayLastAppliedBridgeOutboundSeq)
         SecureStore.deleteValue(for: CodexSecureKeys.trustedMacRegistry)
         SecureStore.deleteValue(for: CodexSecureKeys.lastTrustedMacDeviceId)
+    }
+
+    private func makeService() -> CodexService {
+        let defaults = makeTestDefaults()
+        let service = CodexService(
+            defaults: defaults,
+            userNotificationCenter: FakeUserNotificationCenter(),
+            remoteNotificationRegistrar: FakeRemoteNotificationRegistrar()
+        )
+        Self.retainedServices.append(service)
+        return service
+    }
+
+    private func makeTestDefaults() -> UserDefaults {
+        let suiteName = "CodexSecurePairingStateTests.\(UUID().uuidString)"
+        defaultsSuiteNamesToClear.append(suiteName)
+        return UserDefaults(suiteName: suiteName) ?? .standard
+    }
+}
+
+private final class FakeRemoteNotificationRegistrar: CodexRemoteNotificationRegistering {
+    func registerForRemoteNotifications() {}
+}
+
+private final class FakeUserNotificationCenter: CodexUserNotificationCentering {
+    weak var delegate: UNUserNotificationCenterDelegate?
+
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
+        true
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {}
+
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        .authorized
     }
 }
