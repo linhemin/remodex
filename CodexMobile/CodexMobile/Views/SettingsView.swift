@@ -10,7 +10,9 @@ struct SettingsView: View {
     @Environment(CodexService.self) private var codex
 
     @AppStorage("codex.appFontStyle") private var appFontStyleRawValue = AppFont.defaultStoredStyleRawValue
-    @State private var isShowingMacNameSheet = false
+    @State private var editingHostDeviceId: String?
+    @State private var hostPendingForget: CodexTrustedHostPresentation?
+    @State private var isShowingPairComputerScanner = false
 
     private let runtimeAutoValue = "__AUTO__"
     private let runtimeNormalValue = "__NORMAL__"
@@ -24,6 +26,7 @@ struct SettingsView: View {
                 SettingsNotificationsCard()
                 SettingsGPTAccountCard()
                 runtimeDefaultsSection
+                pairedComputersSection
                 SettingsAboutCard()
                 SettingsUsageCard()
                 connectionSection
@@ -32,14 +35,54 @@ struct SettingsView: View {
         }
         .font(AppFont.body())
         .navigationTitle("Settings")
-        .sheet(isPresented: $isShowingMacNameSheet) {
-            if let trustedPairPresentation = codex.trustedPairPresentation {
+        .sheet(isPresented: Binding(
+            get: { editingTrustedHostPresentation != nil },
+            set: { if !$0 { editingHostDeviceId = nil } }
+        )) {
+            if let trustedHostPresentation = editingTrustedHostPresentation {
                 SettingsMacNameSheet(
-                    nickname: sidebarMacNicknameBinding(for: trustedPairPresentation),
-                    currentName: trustedPairPresentation.name,
-                    systemName: trustedPairPresentation.systemName ?? trustedPairPresentation.name
+                    nickname: sidebarMacNicknameBinding(for: trustedHostPresentation.deviceId),
+                    currentName: trustedHostPresentation.name,
+                    systemName: trustedHostPresentation.systemName ?? trustedHostPresentation.name
                 )
             }
+        }
+        .sheet(isPresented: $isShowingPairComputerScanner) {
+            NavigationStack {
+                QRScannerView(
+                    onBack: { isShowingPairComputerScanner = false },
+                    onScan: { pairingPayload in
+                        Task {
+                            isShowingPairComputerScanner = false
+                            await ContentViewModel().connectToRelay(
+                                pairingPayload: pairingPayload,
+                                codex: codex
+                            )
+                        }
+                    }
+                )
+                .navigationBarHidden(true)
+            }
+        }
+        .confirmationDialog(
+            "Forget \(hostPendingForget?.name ?? "computer")?",
+            isPresented: Binding(
+                get: { hostPendingForget != nil },
+                set: { if !$0 { hostPendingForget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Forget Computer", role: .destructive) {
+                if let hostPendingForget {
+                    codex.forgetTrustedMac(deviceId: hostPendingForget.deviceId)
+                }
+                hostPendingForget = nil
+            }
+            Button("Cancel", role: .cancel) {
+                hostPendingForget = nil
+            }
+        } message: {
+            Text("This iPhone will stop trusting that computer until you scan a new QR code.")
         }
     }
 
@@ -122,11 +165,11 @@ struct SettingsView: View {
                     presentation: trustedPairPresentation,
                     connectionStatusLabel: connectionStatusLabel,
                     onEditName: {
-                        isShowingMacNameSheet = true
+                        editingHostDeviceId = trustedPairPresentation.deviceId
                     }
                 )
             } else {
-                Text("No paired Mac")
+                Text("No paired computer")
                     .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(.primary)
             }
@@ -158,11 +201,44 @@ struct SettingsView: View {
                     HapticFeedback.shared.triggerImpactFeedback()
                     disconnectRelay()
                 }
-            } else if codex.hasTrustedMacReconnectCandidate {
-                SettingsButton("Forget Pair", role: .destructive) {
+            } else if codex.hasReconnectCandidate {
+                SettingsButton("Scan New QR Code") {
                     HapticFeedback.shared.triggerImpactFeedback()
-                    codex.forgetTrustedMac()
+                    isShowingPairComputerScanner = true
                 }
+            }
+        }
+    }
+
+    @ViewBuilder private var pairedComputersSection: some View {
+        SettingsCard(title: "Paired Computers") {
+            if codex.trustedHostPresentations.isEmpty {
+                Text("No paired computers yet")
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(.primary)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(codex.trustedHostPresentations) { host in
+                        SettingsPairedHostRow(
+                            host: host,
+                            onSelect: {
+                                HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                                handleHostSelection(host.deviceId)
+                            },
+                            onEditName: {
+                                editingHostDeviceId = host.deviceId
+                            },
+                            onForget: {
+                                hostPendingForget = host
+                            }
+                        )
+                    }
+                }
+            }
+
+            SettingsButton("Pair New Computer") {
+                HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                isShowingPairComputerScanner = true
             }
         }
     }
@@ -206,7 +282,29 @@ struct SettingsView: View {
 
     // MARK: - Actions
 
+    private var editingTrustedHostPresentation: CodexTrustedHostPresentation? {
+        guard let editingHostDeviceId else {
+            return nil
+        }
+
+        return codex.trustedHostPresentations.first { $0.deviceId == editingHostDeviceId }
+    }
+
     private func disconnectRelay() {
+        Task { @MainActor in
+            await codex.disconnect()
+            codex.clearSavedRelaySession()
+        }
+    }
+
+    private func handleHostSelection(_ deviceId: String) {
+        let wasConnectedToDifferentHost = codex.isConnected && codex.normalizedRelayMacDeviceId != deviceId
+        codex.selectTrustedHost(deviceId: deviceId)
+
+        guard wasConnectedToDifferentHost else {
+            return
+        }
+
         Task { @MainActor in
             await codex.disconnect()
             codex.clearSavedRelaySession()
@@ -262,10 +360,10 @@ struct SettingsView: View {
     }
 
     // Writes nicknames against the active trusted Mac so switching pairs does not reuse the wrong alias.
-    private func sidebarMacNicknameBinding(for presentation: CodexTrustedPairPresentation) -> Binding<String> {
+    private func sidebarMacNicknameBinding(for deviceId: String?) -> Binding<String> {
         Binding(
-            get: { SidebarMacNicknameStore.nickname(for: presentation.deviceId) },
-            set: { SidebarMacNicknameStore.setNickname($0, for: presentation.deviceId) }
+            get: { SidebarMacNicknameStore.nickname(for: deviceId) },
+            set: { SidebarMacNicknameStore.setNickname($0, for: deviceId) }
         )
     }
 }
@@ -474,7 +572,7 @@ private struct SettingsNotificationsCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Used for local alerts when a run finishes while the app is in background.")
+            Text(notificationDetailText)
                 .font(AppFont.caption())
                 .foregroundStyle(.secondary)
 
@@ -510,14 +608,32 @@ private struct SettingsNotificationsCard: View {
     }
 
     private var statusLabel: String {
-        switch codex.notificationAuthorizationStatus {
-        case .authorized: "Authorized"
-        case .denied: "Denied"
-        case .provisional: "Provisional"
-        case .ephemeral: "Ephemeral"
-        case .notDetermined: "Not requested"
-        @unknown default: "Unknown"
+        if !codex.supportsManagedRemotePush {
+            return "Local only"
         }
+
+        switch codex.notificationAuthorizationStatus {
+        case .authorized:
+            return "Authorized"
+        case .denied:
+            return "Denied"
+        case .provisional:
+            return "Provisional"
+        case .ephemeral:
+            return "Ephemeral"
+        case .notDetermined:
+            return "Not requested"
+        @unknown default:
+            return "Unknown"
+        }
+    }
+
+    private var notificationDetailText: String {
+        if codex.supportsManagedRemotePush {
+            return "Used for local alerts when a run finishes while the app is in background."
+        }
+
+        return "This debug build signs without APNs capability so remote push delivery is disabled on device."
     }
 }
 
@@ -731,7 +847,7 @@ private struct SettingsArchivedChatsCard: View {
 private struct SettingsAboutCard: View {
     var body: some View {
         SettingsCard(title: "About") {
-            Text("Chats are End-to-end encrypted between your iPhone and Mac. The relay only sees ciphertext and connection metadata after the secure handshake completes.")
+            Text("Chats are end-to-end encrypted between your iPhone and paired computers. The relay only sees ciphertext and connection metadata after the secure handshake completes.")
                 .font(AppFont.caption())
                 .foregroundStyle(.secondary)
         }
@@ -747,7 +863,7 @@ private struct SettingsTrustedMacCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 HStack(spacing: 10) {
-                    Image(systemName: "desktopcomputer")
+                    Image(systemName: presentation.platform.symbolName)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 32, height: 32)
@@ -757,7 +873,7 @@ private struct SettingsTrustedMacCard: View {
                         )
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Mac")
+                        Text(presentation.platform.displayName)
                             .font(AppFont.caption(weight: .semibold))
                             .foregroundStyle(.secondary)
 
@@ -790,6 +906,10 @@ private struct SettingsTrustedMacCard: View {
 
                 if let title = compactTitle {
                     SettingsStatusPill(label: title)
+                }
+
+                if presentation.pairedDeviceCount > 1 {
+                    SettingsStatusPill(label: "\(presentation.pairedDeviceCount) paired")
                 }
             }
 
@@ -833,6 +953,47 @@ private struct SettingsTrustedMacCard: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+private struct SettingsPairedHostRow: View {
+    let host: CodexTrustedHostPresentation
+    let onSelect: () -> Void
+    let onEditName: () -> Void
+    let onForget: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TrustedHostRow(host: host)
+
+            HStack(spacing: 10) {
+                if !host.isCurrent {
+                    compactButton("Use This Computer", action: onSelect)
+                }
+
+                compactButton("Rename", action: onEditName)
+                compactButton("Forget", role: .destructive, action: onForget)
+            }
+        }
+    }
+
+    private func compactButton(
+        _ title: String,
+        role: ButtonRole? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(role == .destructive ? .red : .secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill((role == .destructive ? Color.red : Color.primary).opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

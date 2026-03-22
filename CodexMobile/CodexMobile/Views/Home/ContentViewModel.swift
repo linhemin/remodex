@@ -325,7 +325,7 @@ extension ContentViewModel {
         } catch let error as CodexTrustedSessionResolveError {
             return trustedReconnectResolution(for: error, codex: codex)
         } catch {
-            if !codex.hasSavedRelaySession {
+            if !codex.savedRelaySessionMatchesPreferredHost {
                 codex.lastErrorMessage = error.localizedDescription
             }
             return .fallbackToSaved
@@ -348,14 +348,14 @@ extension ContentViewModel {
     ) -> ReconnectURLResolution {
         switch error {
         case .unsupportedRelay:
-            if !codex.hasSavedRelaySession {
+            if !codex.savedRelaySessionMatchesPreferredHost {
                 codex.connectionRecoveryState = .idle
                 codex.lastErrorMessage = "This relay needs a fresh QR scan before trusted reconnect is available."
                 return .stop
             }
             return .fallbackToSaved
         case .macOffline(let message):
-            if codex.hasSavedRelaySession {
+            if codex.savedRelaySessionMatchesPreferredHost {
                 codex.lastErrorMessage = nil
                 return .fallbackToSaved
             }
@@ -370,7 +370,7 @@ extension ContentViewModel {
         case .noTrustedMac:
             return .fallbackToSaved
         case .invalidResponse(let message), .network(let message):
-            if !codex.hasSavedRelaySession {
+            if !codex.savedRelaySessionMatchesPreferredHost {
                 codex.lastErrorMessage = message
             }
             return .fallbackToSaved
@@ -379,6 +379,9 @@ extension ContentViewModel {
 
     // Reuses the last QR-resolved session when trusted lookup is unavailable or not yet supported end-to-end.
     private func savedReconnectURL(codex: CodexService) -> String? {
+        guard codex.savedRelaySessionMatchesPreferredHost else {
+            return nil
+        }
         guard let sessionId = codex.normalizedRelaySessionId,
               let relayURL = codex.normalizedRelayURL else {
             return nil

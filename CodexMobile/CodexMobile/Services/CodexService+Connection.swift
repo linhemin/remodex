@@ -209,9 +209,18 @@ extension CodexService {
         trustedMacRegistry.records.removeValue(forKey: targetDeviceId)
         SecureStore.writeCodable(trustedMacRegistry, for: CodexSecureKeys.trustedMacRegistry)
 
+        if normalizedSelectedHostDeviceId == targetDeviceId {
+            setSelectedHostDeviceId(mostRecentTrustedMacRecord(excluding: targetDeviceId)?.macDeviceId)
+        }
+
         if normalizedLastTrustedMacDeviceId == targetDeviceId {
-            SecureStore.deleteValue(for: CodexSecureKeys.lastTrustedMacDeviceId)
-            lastTrustedMacDeviceId = nil
+            let fallbackDeviceId = mostRecentTrustedMacRecord(excluding: targetDeviceId)?.macDeviceId
+            lastTrustedMacDeviceId = fallbackDeviceId
+            if let fallbackDeviceId {
+                SecureStore.writeString(fallbackDeviceId, for: CodexSecureKeys.lastTrustedMacDeviceId)
+            } else {
+                SecureStore.deleteValue(for: CodexSecureKeys.lastTrustedMacDeviceId)
+            }
         }
 
         if normalizedRelayMacDeviceId == targetDeviceId {

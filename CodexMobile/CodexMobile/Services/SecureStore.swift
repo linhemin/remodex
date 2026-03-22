@@ -17,6 +17,7 @@ enum CodexSecureKeys {
     static let pushDeviceToken = "codex.push.deviceToken"
     static let trustedMacRegistry = "codex.secure.trustedMacRegistry"
     static let lastTrustedMacDeviceId = "codex.secure.lastTrustedMacDeviceId"
+    static let selectedHostDeviceId = "codex.secure.selectedHostDeviceId"
     static let phoneIdentityState = "codex.secure.phoneIdentityState"
     static let messageHistoryKey = "codex.local.messageHistoryKey"
 }

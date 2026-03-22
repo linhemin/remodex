@@ -10,6 +10,8 @@ import XCTest
 
 @MainActor
 final class CodexSecurePairingStateTests: XCTestCase {
+    private static var retainedServices: [CodexService] = []
+
     override func setUp() {
         super.setUp()
         clearStoredSecureRelayState()
@@ -21,7 +23,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testRememberRelayPairingForcesFreshQRBootstrapEvenForTrustedMac() {
-        let service = CodexService()
+        let service = makeService()
         let macDeviceID = "mac-\(UUID().uuidString)"
         let originalPublicKey = Data(repeating: 1, count: 32).base64EncodedString()
         let freshQRPublicKey = Data(repeating: 2, count: 32).base64EncodedString()
@@ -50,7 +52,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testRememberRelayPairingShowsHandshakeStateForBrandNewMac() {
-        let service = CodexService()
+        let service = makeService()
         let freshQRPublicKey = Data(repeating: 4, count: 32).base64EncodedString()
 
         service.rememberRelayPairing(
@@ -70,7 +72,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testResetSecureTransportStatePreservesRePairRequiredState() {
-        let service = CodexService()
+        let service = makeService()
         service.relaySessionId = "session-\(UUID().uuidString)"
         service.relayUrl = "ws://relay.local/relay"
         service.secureConnectionState = .rePairRequired
@@ -83,7 +85,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testApplyingResolvedTrustedSessionResetsReplayCursorWhenLiveSessionChanges() {
-        let service = CodexService()
+        let service = makeService()
         let macDeviceID = "mac-\(UUID().uuidString)"
 
         service.relaySessionId = "stale-session"
@@ -111,7 +113,7 @@ final class CodexSecurePairingStateTests: XCTestCase {
     }
 
     func testApplyingResolvedTrustedSessionKeepsReplayCursorWhenLiveSessionIsUnchanged() {
-        let service = CodexService()
+        let service = makeService()
         let macDeviceID = "mac-\(UUID().uuidString)"
 
         service.relaySessionId = "same-session"
@@ -138,7 +140,40 @@ final class CodexSecurePairingStateTests: XCTestCase {
         )
     }
 
+    func testPreferredTrustedMacDeviceIdUsesExplicitSelectedHostOverRecencyFallback() {
+        let selectedMacDeviceID = "mac-\(UUID().uuidString)"
+        let moreRecentMacDeviceID = "mac-\(UUID().uuidString)"
+
+        let service = makeService()
+        service.selectedHostDeviceId = selectedMacDeviceID
+        service.trustedMacRegistry.records[selectedMacDeviceID] = CodexTrustedMacRecord(
+            macDeviceId: selectedMacDeviceID,
+            macIdentityPublicKey: Data(repeating: 11, count: 32).base64EncodedString(),
+            lastPairedAt: Date().addingTimeInterval(-120),
+            relayURL: "wss://selected.relay/relay",
+            lastUsedAt: Date().addingTimeInterval(-120)
+        )
+        service.trustedMacRegistry.records[moreRecentMacDeviceID] = CodexTrustedMacRecord(
+            macDeviceId: moreRecentMacDeviceID,
+            macIdentityPublicKey: Data(repeating: 12, count: 32).base64EncodedString(),
+            lastPairedAt: Date(),
+            relayURL: "wss://recent.relay/relay",
+            lastUsedAt: Date()
+        )
+
+        XCTAssertEqual(service.preferredTrustedMacDeviceId, selectedMacDeviceID)
+    }
+
     // Clears the persisted relay session keys touched by secure reconnect tests.
+    private func makeService() -> CodexService {
+        let suiteName = "CodexSecurePairingStateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.removePersistentDomain(forName: suiteName)
+        let service = CodexService(defaults: defaults)
+        Self.retainedServices.append(service)
+        return service
+    }
+
     private func clearStoredSecureRelayState() {
         SecureStore.deleteValue(for: CodexSecureKeys.relaySessionId)
         SecureStore.deleteValue(for: CodexSecureKeys.relayUrl)
@@ -148,5 +183,6 @@ final class CodexSecurePairingStateTests: XCTestCase {
         SecureStore.deleteValue(for: CodexSecureKeys.relayLastAppliedBridgeOutboundSeq)
         SecureStore.deleteValue(for: CodexSecureKeys.trustedMacRegistry)
         SecureStore.deleteValue(for: CodexSecureKeys.lastTrustedMacDeviceId)
+        SecureStore.deleteValue(for: CodexSecureKeys.selectedHostDeviceId)
     }
 }

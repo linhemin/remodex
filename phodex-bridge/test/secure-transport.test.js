@@ -6,6 +6,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const {
   createCipheriv,
   createDecipheriv,
@@ -61,477 +64,510 @@ test("secure transport rejects plaintext JSON-RPC before the secure handshake", 
   assert.equal(controlMessages[0]?.code, "update_required");
 });
 
-test("secure transport round-trips encrypted payloads after a trusted reconnect handshake", () => {
-  const macIdentity = createOkpKeyPair("ed25519");
-  const phoneIdentity = createOkpKeyPair("ed25519");
-  const phoneEphemeral = createOkpKeyPair("x25519");
+test("pairing payload includes optional host metadata without changing stable identifiers", () => {
   const secureTransport = createBridgeSecureTransport({
-    sessionId: "session-2",
+    sessionId: "session-meta",
     relayUrl: "wss://relay.example/relay",
     deviceState: {
-      macDeviceId: "mac-2",
-      macIdentityPrivateKey: macIdentity.privateKey,
-      macIdentityPublicKey: macIdentity.publicKey,
-      trustedPhones: {
-        "phone-2": phoneIdentity.publicKey,
-      },
-    },
-  });
-
-  const controlMessages = [];
-  const applicationMessages = [];
-  const wireMessages = [];
-  secureTransport.bindLiveSendWireMessage((message) => {
-    wireMessages.push(message);
-  });
-
-  const clientNonce = Buffer.alloc(32, 7);
-  secureTransport.handleIncomingWireMessage(
-    JSON.stringify({
-      kind: "clientHello",
-      protocolVersion: 1,
-      sessionId: "session-2",
-      handshakeMode: HANDSHAKE_MODE_TRUSTED_RECONNECT,
-      phoneDeviceId: "phone-2",
-      phoneIdentityPublicKey: phoneIdentity.publicKey,
-      phoneEphemeralPublicKey: phoneEphemeral.publicKey,
-      clientNonce: clientNonce.toString("base64"),
-    }),
-    {
-      sendControlMessage(message) {
-        controlMessages.push(message);
-      },
-      onApplicationMessage(message) {
-        applicationMessages.push(message);
-      },
-    }
-  );
-
-  const serverHello = controlMessages.find((message) => message.kind === "serverHello");
-  assert.ok(serverHello, "expected serverHello");
-
-  const transcriptBytes = buildTranscriptBytes({
-    sessionId: "session-2",
-    protocolVersion: 1,
-    handshakeMode: HANDSHAKE_MODE_TRUSTED_RECONNECT,
-    keyEpoch: serverHello.keyEpoch,
-    macDeviceId: "mac-2",
-    phoneDeviceId: "phone-2",
-    macIdentityPublicKey: macIdentity.publicKey,
-    phoneIdentityPublicKey: phoneIdentity.publicKey,
-    macEphemeralPublicKey: serverHello.macEphemeralPublicKey,
-    phoneEphemeralPublicKey: phoneEphemeral.publicKey,
-    clientNonce,
-    serverNonce: Buffer.from(serverHello.serverNonce, "base64"),
-    expiresAtForTranscript: 0,
-  });
-  const phoneAuthTranscript = Buffer.concat([
-    transcriptBytes,
-    encodeLengthPrefixedUTF8("client-auth"),
-  ]);
-  const phoneSignature = sign(
-    null,
-    phoneAuthTranscript,
-    createPrivateKey({
-      key: {
-        crv: "Ed25519",
-        d: base64ToBase64Url(phoneIdentity.privateKey),
-        kty: "OKP",
-        x: base64ToBase64Url(phoneIdentity.publicKey),
-      },
-      format: "jwk",
-    })
-  );
-
-  secureTransport.handleIncomingWireMessage(
-    JSON.stringify({
-      kind: "clientAuth",
-      sessionId: "session-2",
-      phoneDeviceId: "phone-2",
-      keyEpoch: serverHello.keyEpoch,
-      phoneSignature: phoneSignature.toString("base64"),
-    }),
-    {
-      sendControlMessage(message) {
-        controlMessages.push(message);
-      },
-      onApplicationMessage(message) {
-        applicationMessages.push(message);
-      },
-    }
-  );
-
-  const secureReady = controlMessages.find((message) => message.kind === "secureReady");
-  assert.ok(secureReady, "expected secureReady");
-
-  const sharedSecret = diffieHellman({
-    privateKey: createPrivateKey({
-      key: {
-        crv: "X25519",
-        d: base64ToBase64Url(phoneEphemeral.privateKey),
-        kty: "OKP",
-        x: base64ToBase64Url(phoneEphemeral.publicKey),
-      },
-      format: "jwk",
-    }),
-    publicKey: createPublicKey({
-      key: {
-        crv: "X25519",
-        kty: "OKP",
-        x: base64ToBase64Url(serverHello.macEphemeralPublicKey),
-      },
-      format: "jwk",
-    }),
-  });
-  const salt = createHash("sha256").update(transcriptBytes).digest();
-  const infoPrefix = `remodex-e2ee-v1|session-2|mac-2|phone-2|${serverHello.keyEpoch}`;
-  const phoneToMacKey = Buffer.from(
-    hkdfSync("sha256", sharedSecret, salt, Buffer.from(`${infoPrefix}|phoneToMac`, "utf8"), 32)
-  );
-  const macToPhoneKey = Buffer.from(
-    hkdfSync("sha256", sharedSecret, salt, Buffer.from(`${infoPrefix}|macToPhone`, "utf8"), 32)
-  );
-
-  secureTransport.handleIncomingWireMessage(
-    JSON.stringify({
-      kind: "resumeState",
-      sessionId: "session-2",
-      keyEpoch: serverHello.keyEpoch,
-      lastAppliedBridgeOutboundSeq: 0,
-    }),
-    {
-      sendControlMessage(message) {
-        controlMessages.push(message);
-      },
-      onApplicationMessage(message) {
-        applicationMessages.push(message);
-      },
-    }
-  );
-
-  secureTransport.queueOutboundApplicationMessage(
-    JSON.stringify({ id: "response-1", result: { ok: true } }),
-    (message) => {
-      wireMessages.push(message);
-    }
-  );
-  assert.equal(wireMessages.length, 1);
-
-  const outboundEnvelope = JSON.parse(wireMessages[0]);
-  const outboundPayload = decryptEnvelope(outboundEnvelope, macToPhoneKey);
-  assert.equal(outboundPayload.bridgeOutboundSeq, 1);
-  assert.equal(outboundPayload.payloadText, JSON.stringify({ id: "response-1", result: { ok: true } }));
-
-  const inboundEnvelope = encryptEnvelope(
-    {
-      payloadText: JSON.stringify({ id: "request-1", method: "thread/list", params: {} }),
-    },
-    phoneToMacKey,
-    "iphone",
-    0,
-    "session-2",
-    serverHello.keyEpoch
-  );
-  secureTransport.handleIncomingWireMessage(
-    JSON.stringify(inboundEnvelope),
-    {
-      sendControlMessage(message) {
-        controlMessages.push(message);
-      },
-      onApplicationMessage(message) {
-        applicationMessages.push(message);
-      },
-    }
-  );
-
-  assert.deepEqual(applicationMessages, [
-    JSON.stringify({ id: "request-1", method: "thread/list", params: {} }),
-  ]);
-});
-
-test("qr bootstrap allows a fresh QR scan to replace the trusted iPhone", () => {
-  const macIdentity = createOkpKeyPair("ed25519");
-  const firstPhoneIdentity = createOkpKeyPair("ed25519");
-  const firstPhoneEphemeral = createOkpKeyPair("x25519");
-  const secondPhoneIdentity = createOkpKeyPair("ed25519");
-  const secondPhoneEphemeral = createOkpKeyPair("x25519");
-  const secureTransport = createBridgeSecureTransport({
-    sessionId: "session-3",
-    relayUrl: "wss://relay.example/relay",
-    deviceState: {
-      macDeviceId: "mac-3",
-      macIdentityPrivateKey: macIdentity.privateKey,
-      macIdentityPublicKey: macIdentity.publicKey,
+      macDeviceId: "mac-meta",
+      macIdentityPrivateKey: "mac-private-key",
+      macIdentityPublicKey: "mac-public-key",
+      displayName: "Desk Host",
+      platform: "darwin",
       trustedPhones: {},
     },
   });
 
-  finishHandshake({
-    secureTransport,
-    sessionId: "session-3",
-    macDeviceId: "mac-3",
-    phoneDeviceId: "phone-3a",
-    macIdentity,
-    phoneIdentity: firstPhoneIdentity,
-    phoneEphemeral: firstPhoneEphemeral,
-    handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
-    lastAppliedBridgeOutboundSeq: 0,
-  });
+  const pairingPayload = secureTransport.createPairingPayload();
 
-  finishHandshake({
-    secureTransport,
-    sessionId: "session-3",
-    macDeviceId: "mac-3",
-    phoneDeviceId: "phone-3b",
-    macIdentity,
-    phoneIdentity: secondPhoneIdentity,
-    phoneEphemeral: secondPhoneEphemeral,
-    handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
-    lastAppliedBridgeOutboundSeq: 0,
+  assert.equal(pairingPayload.macDeviceId, "mac-meta");
+  assert.equal(pairingPayload.macIdentityPublicKey, "mac-public-key");
+  assert.equal(pairingPayload.displayName, "Desk Host");
+  assert.equal(pairingPayload.platform, "macOS");
+  assert.equal(pairingPayload.relay, "wss://relay.example/relay");
+});
+
+test("secure transport round-trips encrypted payloads after a trusted reconnect handshake", () => {
+  withTempDeviceStateEnv(() => {
+    const macIdentity = createOkpKeyPair("ed25519");
+    const phoneIdentity = createOkpKeyPair("ed25519");
+    const phoneEphemeral = createOkpKeyPair("x25519");
+    const secureTransport = createBridgeSecureTransport({
+      sessionId: "session-2",
+      relayUrl: "wss://relay.example/relay",
+      deviceState: {
+        macDeviceId: "mac-2",
+        macIdentityPrivateKey: macIdentity.privateKey,
+        macIdentityPublicKey: macIdentity.publicKey,
+        trustedPhones: {
+          "phone-2": phoneIdentity.publicKey,
+        },
+      },
+    });
+
+    const controlMessages = [];
+    const applicationMessages = [];
+    const wireMessages = [];
+    secureTransport.bindLiveSendWireMessage((message) => {
+      wireMessages.push(message);
+    });
+
+    const clientNonce = Buffer.alloc(32, 7);
+    secureTransport.handleIncomingWireMessage(
+      JSON.stringify({
+        kind: "clientHello",
+        protocolVersion: 1,
+        sessionId: "session-2",
+        handshakeMode: HANDSHAKE_MODE_TRUSTED_RECONNECT,
+        phoneDeviceId: "phone-2",
+        phoneIdentityPublicKey: phoneIdentity.publicKey,
+        phoneEphemeralPublicKey: phoneEphemeral.publicKey,
+        clientNonce: clientNonce.toString("base64"),
+      }),
+      {
+        sendControlMessage(message) {
+          controlMessages.push(message);
+        },
+        onApplicationMessage(message) {
+          applicationMessages.push(message);
+        },
+      }
+    );
+
+    const serverHello = controlMessages.find((message) => message.kind === "serverHello");
+    assert.ok(serverHello, "expected serverHello");
+
+    const transcriptBytes = buildTranscriptBytes({
+      sessionId: "session-2",
+      protocolVersion: 1,
+      handshakeMode: HANDSHAKE_MODE_TRUSTED_RECONNECT,
+      keyEpoch: serverHello.keyEpoch,
+      macDeviceId: "mac-2",
+      phoneDeviceId: "phone-2",
+      macIdentityPublicKey: macIdentity.publicKey,
+      phoneIdentityPublicKey: phoneIdentity.publicKey,
+      macEphemeralPublicKey: serverHello.macEphemeralPublicKey,
+      phoneEphemeralPublicKey: phoneEphemeral.publicKey,
+      clientNonce,
+      serverNonce: Buffer.from(serverHello.serverNonce, "base64"),
+      expiresAtForTranscript: 0,
+    });
+    const phoneAuthTranscript = Buffer.concat([
+      transcriptBytes,
+      encodeLengthPrefixedUTF8("client-auth"),
+    ]);
+    const phoneSignature = sign(
+      null,
+      phoneAuthTranscript,
+      createPrivateKey({
+        key: {
+          crv: "Ed25519",
+          d: base64ToBase64Url(phoneIdentity.privateKey),
+          kty: "OKP",
+          x: base64ToBase64Url(phoneIdentity.publicKey),
+        },
+        format: "jwk",
+      })
+    );
+
+    secureTransport.handleIncomingWireMessage(
+      JSON.stringify({
+        kind: "clientAuth",
+        sessionId: "session-2",
+        phoneDeviceId: "phone-2",
+        keyEpoch: serverHello.keyEpoch,
+        phoneSignature: phoneSignature.toString("base64"),
+      }),
+      {
+        sendControlMessage(message) {
+          controlMessages.push(message);
+        },
+        onApplicationMessage(message) {
+          applicationMessages.push(message);
+        },
+      }
+    );
+
+    const secureReady = controlMessages.find((message) => message.kind === "secureReady");
+    assert.ok(secureReady, "expected secureReady");
+
+    const sharedSecret = diffieHellman({
+      privateKey: createPrivateKey({
+        key: {
+          crv: "X25519",
+          d: base64ToBase64Url(phoneEphemeral.privateKey),
+          kty: "OKP",
+          x: base64ToBase64Url(phoneEphemeral.publicKey),
+        },
+        format: "jwk",
+      }),
+      publicKey: createPublicKey({
+        key: {
+          crv: "X25519",
+          kty: "OKP",
+          x: base64ToBase64Url(serverHello.macEphemeralPublicKey),
+        },
+        format: "jwk",
+      }),
+    });
+    const salt = createHash("sha256").update(transcriptBytes).digest();
+    const infoPrefix = `remodex-e2ee-v1|session-2|mac-2|phone-2|${serverHello.keyEpoch}`;
+    const phoneToMacKey = Buffer.from(
+      hkdfSync("sha256", sharedSecret, salt, Buffer.from(`${infoPrefix}|phoneToMac`, "utf8"), 32)
+    );
+    const macToPhoneKey = Buffer.from(
+      hkdfSync("sha256", sharedSecret, salt, Buffer.from(`${infoPrefix}|macToPhone`, "utf8"), 32)
+    );
+
+    secureTransport.handleIncomingWireMessage(
+      JSON.stringify({
+        kind: "resumeState",
+        sessionId: "session-2",
+        keyEpoch: serverHello.keyEpoch,
+        lastAppliedBridgeOutboundSeq: 0,
+      }),
+      {
+        sendControlMessage(message) {
+          controlMessages.push(message);
+        },
+        onApplicationMessage(message) {
+          applicationMessages.push(message);
+        },
+      }
+    );
+
+    secureTransport.queueOutboundApplicationMessage(
+      JSON.stringify({ id: "response-1", result: { ok: true } }),
+      (message) => {
+        wireMessages.push(message);
+      }
+    );
+    assert.equal(wireMessages.length, 1);
+
+    const outboundEnvelope = JSON.parse(wireMessages[0]);
+    const outboundPayload = decryptEnvelope(outboundEnvelope, macToPhoneKey);
+    assert.equal(outboundPayload.bridgeOutboundSeq, 1);
+    assert.equal(outboundPayload.payloadText, JSON.stringify({ id: "response-1", result: { ok: true } }));
+
+    const inboundEnvelope = encryptEnvelope(
+      {
+        payloadText: JSON.stringify({ id: "request-1", method: "thread/list", params: {} }),
+      },
+      phoneToMacKey,
+      "iphone",
+      0,
+      "session-2",
+      serverHello.keyEpoch
+    );
+    secureTransport.handleIncomingWireMessage(
+      JSON.stringify(inboundEnvelope),
+      {
+        sendControlMessage(message) {
+          controlMessages.push(message);
+        },
+        onApplicationMessage(message) {
+          applicationMessages.push(message);
+        },
+      }
+    );
+
+    assert.deepEqual(applicationMessages, [
+      JSON.stringify({ id: "request-1", method: "thread/list", params: {} }),
+    ]);
+  });
+});
+
+test("qr bootstrap allows a fresh QR scan to replace the trusted iPhone", () => {
+  withTempDeviceStateEnv(() => {
+    const macIdentity = createOkpKeyPair("ed25519");
+    const firstPhoneIdentity = createOkpKeyPair("ed25519");
+    const firstPhoneEphemeral = createOkpKeyPair("x25519");
+    const secondPhoneIdentity = createOkpKeyPair("ed25519");
+    const secondPhoneEphemeral = createOkpKeyPair("x25519");
+    const secureTransport = createBridgeSecureTransport({
+      sessionId: "session-3",
+      relayUrl: "wss://relay.example/relay",
+      deviceState: {
+        macDeviceId: "mac-3",
+        macIdentityPrivateKey: macIdentity.privateKey,
+        macIdentityPublicKey: macIdentity.publicKey,
+        trustedPhones: {},
+      },
+    });
+
+    finishHandshake({
+      secureTransport,
+      sessionId: "session-3",
+      macDeviceId: "mac-3",
+      phoneDeviceId: "phone-3a",
+      macIdentity,
+      phoneIdentity: firstPhoneIdentity,
+      phoneEphemeral: firstPhoneEphemeral,
+      handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
+      lastAppliedBridgeOutboundSeq: 0,
+    });
+
+    finishHandshake({
+      secureTransport,
+      sessionId: "session-3",
+      macDeviceId: "mac-3",
+      phoneDeviceId: "phone-3b",
+      macIdentity,
+      phoneIdentity: secondPhoneIdentity,
+      phoneEphemeral: secondPhoneEphemeral,
+      handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
+      lastAppliedBridgeOutboundSeq: 0,
+    });
   });
 });
 
 test("qr bootstrap starts a fresh replay window instead of leaking buffered messages", () => {
-  const macIdentity = createOkpKeyPair("ed25519");
-  const phoneIdentity = createOkpKeyPair("ed25519");
-  const firstEphemeral = createOkpKeyPair("x25519");
-  const secondEphemeral = createOkpKeyPair("x25519");
-  const wireMessages = [];
-  const secureTransport = createBridgeSecureTransport({
-    sessionId: "session-4",
-    relayUrl: "wss://relay.example/relay",
-    deviceState: {
-      macDeviceId: "mac-4",
-      macIdentityPrivateKey: macIdentity.privateKey,
-      macIdentityPublicKey: macIdentity.publicKey,
-      trustedPhones: {},
-    },
-  });
-  secureTransport.bindLiveSendWireMessage((message) => {
-    wireMessages.push(message);
-  });
-
-  finishHandshake({
-    secureTransport,
-    sessionId: "session-4",
-    macDeviceId: "mac-4",
-    phoneDeviceId: "phone-4",
-    macIdentity,
-    phoneIdentity,
-    phoneEphemeral: firstEphemeral,
-    handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
-    lastAppliedBridgeOutboundSeq: 0,
-  });
-
-  secureTransport.queueOutboundApplicationMessage(
-    JSON.stringify({ id: "stale-response", result: { ok: true } }),
-    (message) => {
+  withTempDeviceStateEnv(() => {
+    const macIdentity = createOkpKeyPair("ed25519");
+    const phoneIdentity = createOkpKeyPair("ed25519");
+    const firstEphemeral = createOkpKeyPair("x25519");
+    const secondEphemeral = createOkpKeyPair("x25519");
+    const wireMessages = [];
+    const secureTransport = createBridgeSecureTransport({
+      sessionId: "session-4",
+      relayUrl: "wss://relay.example/relay",
+      deviceState: {
+        macDeviceId: "mac-4",
+        macIdentityPrivateKey: macIdentity.privateKey,
+        macIdentityPublicKey: macIdentity.publicKey,
+        trustedPhones: {},
+      },
+    });
+    secureTransport.bindLiveSendWireMessage((message) => {
       wireMessages.push(message);
-    }
-  );
-  assert.equal(wireMessages.length, 1);
+    });
 
-  finishHandshake({
-    secureTransport,
-    sessionId: "session-4",
-    macDeviceId: "mac-4",
-    phoneDeviceId: "phone-4",
-    macIdentity,
-    phoneIdentity,
-    phoneEphemeral: secondEphemeral,
-    handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
-    lastAppliedBridgeOutboundSeq: 0,
+    finishHandshake({
+      secureTransport,
+      sessionId: "session-4",
+      macDeviceId: "mac-4",
+      phoneDeviceId: "phone-4",
+      macIdentity,
+      phoneIdentity,
+      phoneEphemeral: firstEphemeral,
+      handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
+      lastAppliedBridgeOutboundSeq: 0,
+    });
+
+    secureTransport.queueOutboundApplicationMessage(
+      JSON.stringify({ id: "stale-response", result: { ok: true } }),
+      (message) => {
+        wireMessages.push(message);
+      }
+    );
+    assert.equal(wireMessages.length, 1);
+
+    finishHandshake({
+      secureTransport,
+      sessionId: "session-4",
+      macDeviceId: "mac-4",
+      phoneDeviceId: "phone-4",
+      macIdentity,
+      phoneIdentity,
+      phoneEphemeral: secondEphemeral,
+      handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
+      lastAppliedBridgeOutboundSeq: 0,
+    });
+
+    assert.equal(wireMessages.length, 1);
   });
-
-  assert.equal(wireMessages.length, 1);
 });
 
 test("rebinding the relay socket replays bridge output from the last phone ack", () => {
-  const macIdentity = createOkpKeyPair("ed25519");
-  const phoneIdentity = createOkpKeyPair("ed25519");
-  const phoneEphemeral = createOkpKeyPair("x25519");
-  const secureTransport = createBridgeSecureTransport({
-    sessionId: "session-5",
-    relayUrl: "wss://relay.example/relay",
-    deviceState: {
+  withTempDeviceStateEnv(() => {
+    const macIdentity = createOkpKeyPair("ed25519");
+    const phoneIdentity = createOkpKeyPair("ed25519");
+    const phoneEphemeral = createOkpKeyPair("x25519");
+    const secureTransport = createBridgeSecureTransport({
+      sessionId: "session-5",
+      relayUrl: "wss://relay.example/relay",
+      deviceState: {
+        macDeviceId: "mac-5",
+        macIdentityPrivateKey: macIdentity.privateKey,
+        macIdentityPublicKey: macIdentity.publicKey,
+        trustedPhones: {},
+      },
+    });
+
+    const { serverHello, transcriptBytes } = finishHandshake({
+      secureTransport,
+      sessionId: "session-5",
       macDeviceId: "mac-5",
-      macIdentityPrivateKey: macIdentity.privateKey,
-      macIdentityPublicKey: macIdentity.publicKey,
-      trustedPhones: {},
-    },
+      phoneDeviceId: "phone-5",
+      macIdentity,
+      phoneIdentity,
+      phoneEphemeral,
+      handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
+      lastAppliedBridgeOutboundSeq: 0,
+    });
+
+    const sharedSecret = diffieHellman({
+      privateKey: createPrivateKey({
+        key: {
+          crv: "X25519",
+          d: base64ToBase64Url(phoneEphemeral.privateKey),
+          kty: "OKP",
+          x: base64ToBase64Url(phoneEphemeral.publicKey),
+        },
+        format: "jwk",
+      }),
+      publicKey: createPublicKey({
+        key: {
+          crv: "X25519",
+          kty: "OKP",
+          x: base64ToBase64Url(serverHello.macEphemeralPublicKey),
+        },
+        format: "jwk",
+      }),
+    });
+    const salt = createHash("sha256").update(transcriptBytes).digest();
+    const infoPrefix = `remodex-e2ee-v1|session-5|mac-5|phone-5|${serverHello.keyEpoch}`;
+    const macToPhoneKey = Buffer.from(
+      hkdfSync("sha256", sharedSecret, salt, Buffer.from(`${infoPrefix}|macToPhone`, "utf8"), 32)
+    );
+
+    secureTransport.bindLiveSendWireMessage(() => false);
+    secureTransport.queueOutboundApplicationMessage(
+      JSON.stringify({ id: "response-5", result: { ok: true } }),
+      () => false
+    );
+
+    const firstRecoveryWireMessages = [];
+    secureTransport.bindLiveSendWireMessage((message) => {
+      firstRecoveryWireMessages.push(message);
+      return true;
+    });
+
+    assert.equal(firstRecoveryWireMessages.length, 1);
+    const outboundEnvelope = JSON.parse(firstRecoveryWireMessages[0]);
+    const outboundPayload = decryptEnvelope(outboundEnvelope, macToPhoneKey);
+    assert.equal(outboundPayload.bridgeOutboundSeq, 1);
+    assert.equal(outboundPayload.payloadText, JSON.stringify({ id: "response-5", result: { ok: true } }));
+
+    const liveWireMessages = [];
+    secureTransport.queueOutboundApplicationMessage(
+      JSON.stringify({ id: "response-6", result: { ok: true } }),
+      () => {
+        throw new Error("expected active relay sender to handle resumed output");
+      }
+    );
+
+    secureTransport.bindLiveSendWireMessage((message) => {
+      liveWireMessages.push(message);
+      return true;
+    });
+
+    assert.equal(liveWireMessages.length, 2);
+    const replayedPayloads = liveWireMessages.map((message) => {
+      const envelope = JSON.parse(message);
+      return decryptEnvelope(envelope, macToPhoneKey);
+    });
+    assert.deepEqual(
+      replayedPayloads.map((payload) => payload.bridgeOutboundSeq),
+      [1, 2]
+    );
   });
-
-  const { serverHello, transcriptBytes } = finishHandshake({
-    secureTransport,
-    sessionId: "session-5",
-    macDeviceId: "mac-5",
-    phoneDeviceId: "phone-5",
-    macIdentity,
-    phoneIdentity,
-    phoneEphemeral,
-    handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
-    lastAppliedBridgeOutboundSeq: 0,
-  });
-
-  const sharedSecret = diffieHellman({
-    privateKey: createPrivateKey({
-      key: {
-        crv: "X25519",
-        d: base64ToBase64Url(phoneEphemeral.privateKey),
-        kty: "OKP",
-        x: base64ToBase64Url(phoneEphemeral.publicKey),
-      },
-      format: "jwk",
-    }),
-    publicKey: createPublicKey({
-      key: {
-        crv: "X25519",
-        kty: "OKP",
-        x: base64ToBase64Url(serverHello.macEphemeralPublicKey),
-      },
-      format: "jwk",
-    }),
-  });
-  const salt = createHash("sha256").update(transcriptBytes).digest();
-  const infoPrefix = `remodex-e2ee-v1|session-5|mac-5|phone-5|${serverHello.keyEpoch}`;
-  const macToPhoneKey = Buffer.from(
-    hkdfSync("sha256", sharedSecret, salt, Buffer.from(`${infoPrefix}|macToPhone`, "utf8"), 32)
-  );
-
-  secureTransport.bindLiveSendWireMessage(() => false);
-  secureTransport.queueOutboundApplicationMessage(
-    JSON.stringify({ id: "response-5", result: { ok: true } }),
-    () => false
-  );
-
-  const firstRecoveryWireMessages = [];
-  secureTransport.bindLiveSendWireMessage((message) => {
-    firstRecoveryWireMessages.push(message);
-    return true;
-  });
-
-  assert.equal(firstRecoveryWireMessages.length, 1);
-  const outboundEnvelope = JSON.parse(firstRecoveryWireMessages[0]);
-  const outboundPayload = decryptEnvelope(outboundEnvelope, macToPhoneKey);
-  assert.equal(outboundPayload.bridgeOutboundSeq, 1);
-  assert.equal(outboundPayload.payloadText, JSON.stringify({ id: "response-5", result: { ok: true } }));
-
-  const liveWireMessages = [];
-  secureTransport.queueOutboundApplicationMessage(
-    JSON.stringify({ id: "response-6", result: { ok: true } }),
-    () => {
-      throw new Error("expected active relay sender to handle resumed output");
-    }
-  );
-
-  secureTransport.bindLiveSendWireMessage((message) => {
-    liveWireMessages.push(message);
-    return true;
-  });
-
-  assert.equal(liveWireMessages.length, 2);
-  const replayedPayloads = liveWireMessages.map((message) => {
-    const envelope = JSON.parse(message);
-    return decryptEnvelope(envelope, macToPhoneKey);
-  });
-  assert.deepEqual(
-    replayedPayloads.map((payload) => payload.bridgeOutboundSeq),
-    [1, 2]
-  );
 });
 
 test("resume replay does not advance the replay watermark before a phone ack", () => {
-  const macIdentity = createOkpKeyPair("ed25519");
-  const phoneIdentity = createOkpKeyPair("ed25519");
-  const phoneEphemeral = createOkpKeyPair("x25519");
-  const secureTransport = createBridgeSecureTransport({
-    sessionId: "session-6",
-    relayUrl: "wss://relay.example/relay",
-    deviceState: {
-      macDeviceId: "mac-6",
-      macIdentityPrivateKey: macIdentity.privateKey,
-      macIdentityPublicKey: macIdentity.publicKey,
-      trustedPhones: {},
-    },
-  });
-
-  const initialReplayWireMessages = [];
-  secureTransport.bindLiveSendWireMessage((message) => {
-    initialReplayWireMessages.push(message);
-    return true;
-  });
-
-  const { serverHello, transcriptBytes } = finishHandshake({
-    secureTransport,
-    sessionId: "session-6",
-    macDeviceId: "mac-6",
-    phoneDeviceId: "phone-6",
-    macIdentity,
-    phoneIdentity,
-    phoneEphemeral,
-    handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
-    lastAppliedBridgeOutboundSeq: 0,
-    skipResumeState: true,
-  });
-
-  secureTransport.queueOutboundApplicationMessage(
-    JSON.stringify({ id: "response-6", result: { ok: true } }),
-    () => {
-      throw new Error("expected bound sender to stay attached after secureReady");
-    }
-  );
-
-  secureTransport.handleIncomingWireMessage(
-    JSON.stringify({
-      kind: "resumeState",
+  withTempDeviceStateEnv(() => {
+    const macIdentity = createOkpKeyPair("ed25519");
+    const phoneIdentity = createOkpKeyPair("ed25519");
+    const phoneEphemeral = createOkpKeyPair("x25519");
+    const secureTransport = createBridgeSecureTransport({
       sessionId: "session-6",
-      keyEpoch: serverHello.keyEpoch,
+      relayUrl: "wss://relay.example/relay",
+      deviceState: {
+        macDeviceId: "mac-6",
+        macIdentityPrivateKey: macIdentity.privateKey,
+        macIdentityPublicKey: macIdentity.publicKey,
+        trustedPhones: {},
+      },
+    });
+
+    const initialReplayWireMessages = [];
+    secureTransport.bindLiveSendWireMessage((message) => {
+      initialReplayWireMessages.push(message);
+      return true;
+    });
+
+    const { serverHello, transcriptBytes } = finishHandshake({
+      secureTransport,
+      sessionId: "session-6",
+      macDeviceId: "mac-6",
+      phoneDeviceId: "phone-6",
+      macIdentity,
+      phoneIdentity,
+      phoneEphemeral,
+      handshakeMode: HANDSHAKE_MODE_QR_BOOTSTRAP,
       lastAppliedBridgeOutboundSeq: 0,
-    }),
-    {
-      sendControlMessage() {},
-      onApplicationMessage() {},
-    }
-  );
+      skipResumeState: true,
+    });
 
-  const sharedSecret = diffieHellman({
-    privateKey: createPrivateKey({
-      key: {
-        crv: "X25519",
-        d: base64ToBase64Url(phoneEphemeral.privateKey),
-        kty: "OKP",
-        x: base64ToBase64Url(phoneEphemeral.publicKey),
-      },
-      format: "jwk",
-    }),
-    publicKey: createPublicKey({
-      key: {
-        crv: "X25519",
-        kty: "OKP",
-        x: base64ToBase64Url(serverHello.macEphemeralPublicKey),
-      },
-      format: "jwk",
-    }),
+    secureTransport.queueOutboundApplicationMessage(
+      JSON.stringify({ id: "response-6", result: { ok: true } }),
+      () => {
+        throw new Error("expected bound sender to stay attached after secureReady");
+      }
+    );
+
+    secureTransport.handleIncomingWireMessage(
+      JSON.stringify({
+        kind: "resumeState",
+        sessionId: "session-6",
+        keyEpoch: serverHello.keyEpoch,
+        lastAppliedBridgeOutboundSeq: 0,
+      }),
+      {
+        sendControlMessage() {},
+        onApplicationMessage() {},
+      }
+    );
+
+    const sharedSecret = diffieHellman({
+      privateKey: createPrivateKey({
+        key: {
+          crv: "X25519",
+          d: base64ToBase64Url(phoneEphemeral.privateKey),
+          kty: "OKP",
+          x: base64ToBase64Url(phoneEphemeral.publicKey),
+        },
+        format: "jwk",
+      }),
+      publicKey: createPublicKey({
+        key: {
+          crv: "X25519",
+          kty: "OKP",
+          x: base64ToBase64Url(serverHello.macEphemeralPublicKey),
+        },
+        format: "jwk",
+      }),
+    });
+    const salt = createHash("sha256").update(transcriptBytes).digest();
+    const infoPrefix = `remodex-e2ee-v1|session-6|mac-6|phone-6|${serverHello.keyEpoch}`;
+    const macToPhoneKey = Buffer.from(
+      hkdfSync("sha256", sharedSecret, salt, Buffer.from(`${infoPrefix}|macToPhone`, "utf8"), 32)
+    );
+
+    assert.equal(initialReplayWireMessages.length, 1);
+
+    const reboundWireMessages = [];
+    secureTransport.bindLiveSendWireMessage((message) => {
+      reboundWireMessages.push(message);
+      return true;
+    });
+
+    assert.equal(reboundWireMessages.length, 1);
+    const reboundEnvelope = JSON.parse(reboundWireMessages[0]);
+    const reboundPayload = decryptEnvelope(reboundEnvelope, macToPhoneKey);
+    assert.equal(reboundPayload.bridgeOutboundSeq, 1);
+    assert.equal(reboundPayload.payloadText, JSON.stringify({ id: "response-6", result: { ok: true } }));
   });
-  const salt = createHash("sha256").update(transcriptBytes).digest();
-  const infoPrefix = `remodex-e2ee-v1|session-6|mac-6|phone-6|${serverHello.keyEpoch}`;
-  const macToPhoneKey = Buffer.from(
-    hkdfSync("sha256", sharedSecret, salt, Buffer.from(`${infoPrefix}|macToPhone`, "utf8"), 32)
-  );
-
-  assert.equal(initialReplayWireMessages.length, 1);
-
-  const reboundWireMessages = [];
-  secureTransport.bindLiveSendWireMessage((message) => {
-    reboundWireMessages.push(message);
-    return true;
-  });
-
-  assert.equal(reboundWireMessages.length, 1);
-  const reboundEnvelope = JSON.parse(reboundWireMessages[0]);
-  const reboundPayload = decryptEnvelope(reboundEnvelope, macToPhoneKey);
-  assert.equal(reboundPayload.bridgeOutboundSeq, 1);
-  assert.equal(reboundPayload.payloadText, JSON.stringify({ id: "response-6", result: { ok: true } }));
 });
 
 function finishHandshake({
@@ -658,6 +694,34 @@ function createOkpKeyPair(type) {
     privateKey: base64UrlToBase64(privateJwk.d),
     publicKey: base64UrlToBase64(publicJwk.x),
   };
+}
+
+function withTempDeviceStateEnv(run) {
+  const previousDir = process.env.REMODEX_DEVICE_STATE_DIR;
+  const previousMirror = process.env.REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE;
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "remodex-secure-transport-"));
+  const keychainMirrorFile = path.join(tempRoot, "keychain-device-state.json");
+
+  process.env.REMODEX_DEVICE_STATE_DIR = tempRoot;
+  process.env.REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE = keychainMirrorFile;
+
+  try {
+    return run({ tempRoot, keychainMirrorFile });
+  } finally {
+    if (previousDir === undefined) {
+      delete process.env.REMODEX_DEVICE_STATE_DIR;
+    } else {
+      process.env.REMODEX_DEVICE_STATE_DIR = previousDir;
+    }
+
+    if (previousMirror === undefined) {
+      delete process.env.REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE;
+    } else {
+      process.env.REMODEX_DEVICE_STATE_KEYCHAIN_MOCK_FILE = previousMirror;
+    }
+
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
 }
 
 function buildTranscriptBytes({

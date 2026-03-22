@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var navigationPath = NavigationPath()
     @State private var showSettings = false
     @State private var isShowingManualScanner = false
+    @State private var isShowingTrustedHostSwitcher = false
     @State private var hasDismissedAutomaticScanner = false
     @State private var scannerCanReturnToOnboarding = false
     @State private var isSearchActive = false
@@ -114,6 +115,19 @@ struct ContentView: View {
                     },
                     onDismiss: {
                         codex.bridgeUpdatePrompt = nil
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $isShowingTrustedHostSwitcher) {
+                TrustedHostSwitcherSheet(
+                    hosts: codex.trustedHostPresentations,
+                    onSelect: { deviceId in
+                        handleTrustedHostSelection(deviceId)
+                    },
+                    onPairNewComputer: {
+                        presentManualScannerAfterStoppingReconnect()
                     }
                 )
                 .presentationDetents([.medium, .large])
@@ -279,7 +293,10 @@ struct ContentView: View {
                     Task {
                         await viewModel.toggleConnection(codex: codex)
                     }
-                }
+                },
+                onSwitchComputers: codex.pairedHostCount > 1 ? {
+                    isShowingTrustedHostSwitcher = true
+                } : nil
             ) {
                 if homeConnectionPhase == .connecting || (codex.hasReconnectCandidate && !codex.isConnected) {
                     Button("Scan New QR Code") {
@@ -516,6 +533,7 @@ struct ContentView: View {
             return
         }
 
+        isShowingTrustedHostSwitcher = false
         hasDismissedAutomaticScanner = false
         scannerCanReturnToOnboarding = false
         isShowingManualScanner = true
@@ -528,6 +546,7 @@ struct ContentView: View {
     // Re-opens the scanner after the user backed out to the empty state without a saved pairing.
     private func presentAutomaticScanner() {
         withAnimation {
+            isShowingTrustedHostSwitcher = false
             hasDismissedAutomaticScanner = false
         }
     }
@@ -561,6 +580,20 @@ struct ContentView: View {
             selectedThread = thread
         } catch {
             codex.lastErrorMessage = codex.userFacingTurnErrorMessage(from: error)
+        }
+    }
+
+    private func handleTrustedHostSelection(_ deviceId: String) {
+        let wasConnectedToDifferentHost = codex.isConnected && codex.normalizedRelayMacDeviceId != deviceId
+        codex.selectTrustedHost(deviceId: deviceId)
+
+        guard wasConnectedToDifferentHost else {
+            return
+        }
+
+        Task { @MainActor in
+            await codex.disconnect()
+            codex.clearSavedRelaySession()
         }
     }
 

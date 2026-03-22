@@ -31,6 +31,31 @@ enum CodexSecureConnectionState: Equatable, Sendable {
     case updateRequired
 }
 
+enum CodexHostPlatform: String, Codable, Sendable {
+    case macOS = "macos"
+    case windows = "windows"
+    case linux = "linux"
+    case unknown = "unknown"
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = (try? container.decode(String.self))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        switch rawValue {
+        case "macos", "mac", "darwin":
+            self = .macOS
+        case "windows", "win32":
+            self = .windows
+        case "linux":
+            self = .linux
+        default:
+            self = .unknown
+        }
+    }
+}
+
 struct CodexPairingQRPayload: Codable, Sendable {
     let v: Int
     let relay: String
@@ -38,6 +63,28 @@ struct CodexPairingQRPayload: Codable, Sendable {
     let macDeviceId: String
     let macIdentityPublicKey: String
     let expiresAt: Int64
+    let displayName: String?
+    let platform: CodexHostPlatform?
+
+    init(
+        v: Int,
+        relay: String,
+        sessionId: String,
+        macDeviceId: String,
+        macIdentityPublicKey: String,
+        expiresAt: Int64,
+        displayName: String? = nil,
+        platform: CodexHostPlatform? = nil
+    ) {
+        self.v = v
+        self.relay = relay
+        self.sessionId = sessionId
+        self.macDeviceId = macDeviceId
+        self.macIdentityPublicKey = macIdentityPublicKey
+        self.expiresAt = expiresAt
+        self.displayName = displayName
+        self.platform = platform
+    }
 }
 
 struct CodexPhoneIdentityState: Codable, Sendable {
@@ -52,6 +99,7 @@ struct CodexTrustedMacRecord: Codable, Sendable {
     let lastPairedAt: Date
     var relayURL: String? = nil
     var displayName: String? = nil
+    var platform: CodexHostPlatform? = nil
     var lastResolvedSessionId: String? = nil
     var lastResolvedAt: Date? = nil
     var lastUsedAt: Date? = nil
@@ -159,7 +207,24 @@ struct CodexTrustedSessionResolveResponse: Codable, Sendable {
     let macDeviceId: String
     let macIdentityPublicKey: String
     let displayName: String?
+    let platform: CodexHostPlatform?
     let sessionId: String
+
+    init(
+        ok: Bool,
+        macDeviceId: String,
+        macIdentityPublicKey: String,
+        displayName: String? = nil,
+        platform: CodexHostPlatform? = nil,
+        sessionId: String
+    ) {
+        self.ok = ok
+        self.macDeviceId = macDeviceId
+        self.macIdentityPublicKey = macIdentityPublicKey
+        self.displayName = displayName
+        self.platform = platform
+        self.sessionId = sessionId
+    }
 }
 
 struct CodexRelayErrorResponse: Codable, Sendable {

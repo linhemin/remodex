@@ -57,6 +57,16 @@ test("loadOrCreateBridgeDeviceState writes and reloads the canonical file state"
   });
 });
 
+test("loadOrCreateBridgeDeviceState seeds readable host metadata on fresh state", () => {
+  withTempDeviceStateEnv(() => {
+    const state = loadOrCreateBridgeDeviceState();
+
+    assert.equal(typeof state.displayName, "string");
+    assert.notEqual(state.displayName.trim(), "");
+    assert.match(state.platform, /^(macOS|Windows|Linux|unknown|[a-z0-9._-]+)$/);
+  });
+});
+
 test("loadOrCreateBridgeDeviceState migrates a valid Keychain mirror into the canonical file", () => {
   withTempDeviceStateEnv(({ keychainMirrorFile, canonicalStateFile }) => {
     const migratedState = makeDeviceState({
@@ -161,6 +171,8 @@ function makeDeviceState(overrides = {}) {
     macDeviceId: "mac-device-id",
     macIdentityPublicKey: "mac-public-key",
     macIdentityPrivateKey: "mac-private-key",
+    displayName: "Bridge Host",
+    platform: "macOS",
     trustedPhones: {},
     ...overrides,
   };

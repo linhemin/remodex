@@ -94,6 +94,10 @@ private struct CodexRunCompletionNotificationPayload {
 }
 
 extension CodexService {
+    var supportsManagedRemotePush: Bool {
+        bundledCapabilityFlag(named: "PHODEX_SUPPORTS_REMOTE_PUSH", default: true)
+    }
+
     // Wires the UNUserNotificationCenter delegate once so taps can reopen the right thread.
     func configureNotifications() {
         guard !hasConfiguredNotifications else {
@@ -150,6 +154,11 @@ extension CodexService {
 
     // Registers with APNs only after the user has not explicitly denied alert notifications.
     func registerForRemoteNotificationsIfAllowed() async {
+        guard supportsManagedRemotePush else {
+            lastPushRegistrationSignature = nil
+            return
+        }
+
         guard notificationAuthorizationStatus != .denied,
               notificationAuthorizationStatus != .notDetermined else {
             await syncManagedPushRegistrationIfNeeded(force: true)
@@ -176,6 +185,11 @@ extension CodexService {
 
     // Push token sync is best-effort so reconnects stay resilient if the managed backend is unavailable.
     func syncManagedPushRegistrationIfNeeded(force: Bool = false) async {
+        guard supportsManagedRemotePush else {
+            lastPushRegistrationSignature = nil
+            return
+        }
+
         guard isConnected, isInitialized else {
             return
         }
@@ -500,6 +514,25 @@ private extension CodexService {
         } catch {
             debugRuntimeLog("thread refresh for notification routing failed: \(error.localizedDescription)")
             return false
+        }
+    }
+
+    func bundledCapabilityFlag(named key: String, default defaultValue: Bool) -> Bool {
+        if let value = Bundle.main.object(forInfoDictionaryKey: key) as? Bool {
+            return value
+        }
+
+        guard let stringValue = Bundle.main.object(forInfoDictionaryKey: key) as? String else {
+            return defaultValue
+        }
+
+        switch stringValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "1", "true", "yes":
+            return true
+        case "0", "false", "no":
+            return false
+        default:
+            return defaultValue
         }
     }
 }

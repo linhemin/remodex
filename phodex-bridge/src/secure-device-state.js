@@ -114,6 +114,8 @@ function createBridgeDeviceState() {
     macDeviceId: randomUUID(),
     macIdentityPublicKey: base64UrlToBase64(publicJwk.x),
     macIdentityPrivateKey: base64UrlToBase64(privateJwk.d),
+    displayName: os.hostname(),
+    platform: normalizeHostPlatform(process.platform),
     trustedPhones: {},
   };
 }
@@ -322,6 +324,8 @@ function normalizeBridgeDeviceState(rawState) {
   const macDeviceId = normalizeNonEmptyString(rawState?.macDeviceId);
   const macIdentityPublicKey = normalizeNonEmptyString(rawState?.macIdentityPublicKey);
   const macIdentityPrivateKey = normalizeNonEmptyString(rawState?.macIdentityPrivateKey);
+  const displayName = normalizeNonEmptyString(rawState?.displayName) || os.hostname();
+  const platform = normalizeHostPlatform(rawState?.platform || process.platform);
 
   if (!macDeviceId || !macIdentityPublicKey || !macIdentityPrivateKey) {
     throw new Error("Bridge device state is incomplete");
@@ -344,6 +348,8 @@ function normalizeBridgeDeviceState(rawState) {
     macDeviceId,
     macIdentityPublicKey,
     macIdentityPrivateKey,
+    displayName,
+    platform,
     trustedPhones,
   };
 }
@@ -357,6 +363,23 @@ function normalizeNonEmptyString(value) {
     return "";
   }
   return value.trim();
+}
+
+function normalizeHostPlatform(value) {
+  const normalized = normalizeNonEmptyString(value).toLowerCase();
+  if (!normalized) {
+    return "unknown";
+  }
+  if (normalized === "darwin") {
+    return "macOS";
+  }
+  if (normalized === "win32" || normalized === "windows") {
+    return "Windows";
+  }
+  if (normalized === "linux") {
+    return "Linux";
+  }
+  return normalizeNonEmptyString(value) || "unknown";
 }
 
 function corruptedStateError(source, error) {
@@ -391,4 +414,5 @@ module.exports = {
   rememberTrustedPhone,
   resetBridgeDeviceState,
   resolveBridgeRelaySession,
+  normalizeHostPlatform,
 };

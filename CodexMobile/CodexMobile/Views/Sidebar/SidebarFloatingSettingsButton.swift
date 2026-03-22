@@ -29,6 +29,8 @@ struct SidebarFloatingSettingsButton: View {
 struct SidebarMacConnectionStatusView: View {
     let name: String
     let systemName: String?
+    let platform: CodexHostPlatform
+    let pairedDeviceCount: Int
     let isConnected: Bool
 
     var body: some View {
@@ -48,6 +50,9 @@ struct SidebarMacConnectionStatusView: View {
     }
 
     private var statusTitle: String {
-        isConnected ? "Connected to Mac" : "Saved Mac"
+        if pairedDeviceCount > 1 {
+            return isConnected ? "Connected Computer" : "Current Computer"
+        }
+        return isConnected ? "Connected \(platform.displayName)" : "Saved \(platform.displayName)"
     }
 }

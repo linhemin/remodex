@@ -13,6 +13,7 @@ struct HomeEmptyStateView<AuthSection: View>: View {
     let trustedPairPresentation: CodexTrustedPairPresentation?
     let offlinePrimaryButtonTitle: String
     let onPrimaryAction: () -> Void
+    let onSwitchComputers: (() -> Void)?
     @ViewBuilder let authSection: () -> AuthSection
 
     @State private var dotPulse = false
@@ -60,6 +61,16 @@ struct HomeEmptyStateView<AuthSection: View>: View {
 
                 if let trustedPairPresentation {
                     TrustedPairSummaryView(presentation: trustedPairPresentation)
+
+                    if trustedPairPresentation.pairedDeviceCount > 1,
+                       let onSwitchComputers {
+                        Button("Switch Computer") {
+                            onSwitchComputers()
+                        }
+                        .font(AppFont.subheadline(weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .buttonStyle(.plain)
+                    }
                 } else if let securityLabel, !securityLabel.isEmpty {
                     Text(securityLabel)
                         .font(AppFont.caption())

@@ -355,6 +355,7 @@ function resolveTrustedMacSession({
     macDeviceId: normalizedMacDeviceId,
     macIdentityPublicKey: liveSession.macIdentityPublicKey,
     displayName: liveSession.displayName || null,
+    platform: liveSession.platform || null,
     sessionId: liveSession.sessionId,
   };
 }
@@ -433,6 +434,7 @@ function readMacRegistrationHeaders(headers, sessionId) {
     macDeviceId: readHeaderString(headers["x-mac-device-id"]),
     macIdentityPublicKey: readHeaderString(headers["x-mac-identity-public-key"]),
     displayName: readHeaderString(headers["x-machine-name"]),
+    platform: readHeaderString(headers["x-machine-platform"]),
     trustedPhoneDeviceId: readHeaderString(headers["x-trusted-phone-device-id"]),
     trustedPhonePublicKey: readHeaderString(headers["x-trusted-phone-public-key"]),
   }, sessionId);
@@ -444,6 +446,7 @@ function normalizeMacRegistration(registration, sessionId) {
     macDeviceId: normalizeNonEmptyString(registration?.macDeviceId),
     macIdentityPublicKey: normalizeNonEmptyString(registration?.macIdentityPublicKey),
     displayName: normalizeNonEmptyString(registration?.displayName),
+    platform: normalizeNonEmptyString(registration?.platform),
     trustedPhoneDeviceId: normalizeNonEmptyString(registration?.trustedPhoneDeviceId),
     trustedPhonePublicKey: normalizeNonEmptyString(registration?.trustedPhonePublicKey),
   };

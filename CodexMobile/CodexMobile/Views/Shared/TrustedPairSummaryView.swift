@@ -11,12 +11,14 @@ struct TrustedPairSummaryView: View {
     let name: String
     let systemName: String?
     let detail: String?
+    let symbolName: String
 
-    init(title: String, name: String, systemName: String?, detail: String?) {
+    init(title: String, name: String, systemName: String?, detail: String?, symbolName: String = "desktopcomputer") {
         self.title = title
         self.name = name
         self.systemName = systemName
         self.detail = detail
+        self.symbolName = symbolName
     }
 
     init(presentation: CodexTrustedPairPresentation) {
@@ -24,7 +26,8 @@ struct TrustedPairSummaryView: View {
             title: presentation.title,
             name: presentation.name,
             systemName: presentation.systemName,
-            detail: presentation.detail
+            detail: presentation.detail,
+            symbolName: presentation.platform.symbolName
         )
     }
 
@@ -35,7 +38,7 @@ struct TrustedPairSummaryView: View {
                 .foregroundStyle(.secondary)
 
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "desktopcomputer")
+                Image(systemName: symbolName)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)

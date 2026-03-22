@@ -159,6 +159,7 @@ test("completion pushes are rejected after the mac relay session disconnects", a
 
 test("trusted session resolve returns the current live session for a trusted iphone", async () => {
   const phoneIdentity = makePhoneIdentity();
+  const platformLabel = hostPlatformLabel();
 
   await withServer(async ({ port }) => {
     const mac = new WebSocket(`ws://127.0.0.1:${port}/relay/live-session-1`, {
@@ -167,6 +168,7 @@ test("trusted session resolve returns the current live session for a trusted iph
         "x-mac-device-id": "mac-1",
         "x-mac-identity-public-key": "mac-public-key-1",
         "x-machine-name": "Emanuele-Mac",
+        "x-machine-platform": platformLabel,
         "x-trusted-phone-device-id": phoneIdentity.phoneDeviceId,
         "x-trusted-phone-public-key": phoneIdentity.phoneIdentityPublicKey,
       },
@@ -191,6 +193,7 @@ test("trusted session resolve returns the current live session for a trusted iph
       macDeviceId: "mac-1",
       macIdentityPublicKey: "mac-public-key-1",
       displayName: "Emanuele-Mac",
+      platform: platformLabel,
       sessionId: "live-session-1",
     });
 
@@ -304,6 +307,7 @@ test("trusted session resolve reports an offline mac without pretending the endp
 
 test("trusted session resolve starts working immediately after a mac updates its trusted-phone registration", async () => {
   const phoneIdentity = makePhoneIdentity();
+  const platformLabel = hostPlatformLabel();
 
   await withServer(async ({ port }) => {
     const mac = new WebSocket(`ws://127.0.0.1:${port}/relay/live-session-4`, {
@@ -311,6 +315,8 @@ test("trusted session resolve starts working immediately after a mac updates its
         "x-role": "mac",
         "x-mac-device-id": "mac-4",
         "x-mac-identity-public-key": "mac-public-key-4",
+        "x-machine-name": "Updated-Mac",
+        "x-machine-platform": platformLabel,
       },
     });
     await onceOpen(mac);
@@ -321,6 +327,7 @@ test("trusted session resolve starts working immediately after a mac updates its
         macDeviceId: "mac-4",
         macIdentityPublicKey: "mac-public-key-4",
         displayName: "Updated-Mac",
+        platform: platformLabel,
         trustedPhoneDeviceId: phoneIdentity.phoneDeviceId,
         trustedPhonePublicKey: phoneIdentity.phoneIdentityPublicKey,
       },
@@ -340,7 +347,46 @@ test("trusted session resolve starts working immediately after a mac updates its
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.displayName, "Updated-Mac");
+    assert.equal(body.platform, platformLabel);
     assert.equal(body.sessionId, "live-session-4");
+
+    const macClosed = onceClosed(mac);
+    mac.close();
+    await macClosed;
+  });
+});
+
+test("trusted session resolve tolerates legacy registrations without platform metadata", async () => {
+  const phoneIdentity = makePhoneIdentity();
+
+  await withServer(async ({ port }) => {
+    const mac = new WebSocket(`ws://127.0.0.1:${port}/relay/live-session-legacy`, {
+      headers: {
+        "x-role": "mac",
+        "x-mac-device-id": "mac-legacy",
+        "x-mac-identity-public-key": "mac-public-key-legacy",
+        "x-machine-name": "Legacy-Mac",
+        "x-trusted-phone-device-id": phoneIdentity.phoneDeviceId,
+        "x-trusted-phone-public-key": phoneIdentity.phoneIdentityPublicKey,
+      },
+    });
+    await onceOpen(mac);
+
+    const response = await fetch(`http://127.0.0.1:${port}/v1/trusted/session/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(makeTrustedResolveBody({
+        macDeviceId: "mac-legacy",
+        phoneIdentity,
+        nonce: "nonce-legacy",
+        timestamp: Date.now(),
+      })),
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.displayName, "Legacy-Mac");
+    assert.equal(body.platform, null);
 
     const macClosed = onceClosed(mac);
     mac.close();
@@ -759,6 +805,19 @@ function base64UrlToBase64(value) {
   return remainder === 0
     ? normalized
     : normalized + "=".repeat(4 - remainder);
+}
+
+function hostPlatformLabel() {
+  if (process.platform === "darwin") {
+    return "macOS";
+  }
+  if (process.platform === "win32") {
+    return "Windows";
+  }
+  if (process.platform === "linux") {
+    return "Linux";
+  }
+  return process.platform;
 }
 
 function base64ToBase64Url(value) {

@@ -431,6 +431,7 @@ final class CodexService {
     var pendingHandshake: CodexPendingHandshake?
     var phoneIdentityState: CodexPhoneIdentityState
     var trustedMacRegistry: CodexTrustedMacRegistry
+    var selectedHostDeviceId: String?
     var lastTrustedMacDeviceId: String?
     var pendingSecureControlContinuations: [String: [CodexSecureControlWaiter]] = [:]
     var bufferedSecureControlMessages: [String: [String]] = [:]
@@ -493,6 +494,7 @@ final class CodexService {
         self.remoteNotificationRegistrar = remoteNotificationRegistrar
         self.phoneIdentityState = codexPhoneIdentityStateFromSecureStore()
         self.trustedMacRegistry = codexTrustedMacRegistryFromSecureStore()
+        self.selectedHostDeviceId = SecureStore.readString(for: CodexSecureKeys.selectedHostDeviceId)
         self.lastTrustedMacDeviceId = SecureStore.readString(for: CodexSecureKeys.lastTrustedMacDeviceId)
         let loadedMessages = messagePersistence.load().mapValues { messages in
             messages.map { message in
@@ -625,6 +627,18 @@ final class CodexService {
         normalizedRelaySessionId != nil && normalizedRelayURL != nil
     }
 
+    var savedRelaySessionMatchesPreferredHost: Bool {
+        guard hasSavedRelaySession else {
+            return false
+        }
+
+        guard let preferredTrustedMacDeviceId else {
+            return true
+        }
+
+        return normalizedRelayMacDeviceId == preferredTrustedMacDeviceId
+    }
+
     // Normalizes the persisted relay session id before reuse in reconnect flows.
     var normalizedRelaySessionId: String? {
         relaySessionId?
@@ -657,18 +671,56 @@ final class CodexService {
             .nilIfEmpty
     }
 
+    var normalizedSelectedHostDeviceId: String? {
+        selectedHostDeviceId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+    }
+
     var preferredTrustedMacDeviceId: String? {
+        if let normalizedSelectedHostDeviceId,
+           trustedMacRegistry.records[normalizedSelectedHostDeviceId] != nil {
+            return normalizedSelectedHostDeviceId
+        }
+
         if let normalizedLastTrustedMacDeviceId,
            trustedMacRegistry.records[normalizedLastTrustedMacDeviceId] != nil {
             return normalizedLastTrustedMacDeviceId
         }
 
-        return trustedMacRegistry.records.values
+        return mostRecentTrustedMacRecord()?
+            .macDeviceId
+    }
+
+    func setSelectedHostDeviceId(_ deviceId: String?) {
+        let normalizedDeviceId = deviceId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+
+        guard normalizedSelectedHostDeviceId != normalizedDeviceId else {
+            return
+        }
+
+        selectedHostDeviceId = normalizedDeviceId
+        if let normalizedDeviceId {
+            SecureStore.writeString(normalizedDeviceId, for: CodexSecureKeys.selectedHostDeviceId)
+        } else {
+            SecureStore.deleteValue(for: CodexSecureKeys.selectedHostDeviceId)
+        }
+    }
+
+    func mostRecentTrustedMacRecord(excluding excludedDeviceId: String? = nil) -> CodexTrustedMacRecord? {
+        trustedMacRegistry.records.values
+            .filter { record in
+                guard let excludedDeviceId else {
+                    return true
+                }
+                return record.macDeviceId != excludedDeviceId
+            }
             .sorted { lhs, rhs in
                 (lhs.lastUsedAt ?? lhs.lastPairedAt) > (rhs.lastUsedAt ?? rhs.lastPairedAt)
             }
-            .first?
-            .macDeviceId
+            .first
     }
 
     var preferredTrustedMacRecord: CodexTrustedMacRecord? {
@@ -683,7 +735,7 @@ final class CodexService {
     }
 
     var hasReconnectCandidate: Bool {
-        hasSavedRelaySession || hasTrustedMacReconnectCandidate
+        savedRelaySessionMatchesPreferredHost || hasTrustedMacReconnectCandidate
     }
 
     // Separates transport readiness from post-connect hydration so the UI can explain delays honestly.

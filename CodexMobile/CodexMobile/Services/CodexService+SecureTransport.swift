@@ -272,6 +272,13 @@ extension CodexService {
         lastAppliedBridgeOutboundSeq = 0
         shouldForceQRBootstrapOnNextHandshake = true
         trustedReconnectFailureCount = 0
+        setSelectedHostDeviceId(payload.macDeviceId)
+        if var existing = trustedMacRegistry.records[payload.macDeviceId] {
+            existing.displayName = payload.displayName ?? existing.displayName
+            existing.platform = payload.platform ?? existing.platform
+            trustedMacRegistry.records[payload.macDeviceId] = existing
+            SecureStore.writeCodable(trustedMacRegistry, for: CodexSecureKeys.trustedMacRegistry)
+        }
         secureConnectionState = trustedMacRegistry.records[payload.macDeviceId] == nil ? .handshaking : .trustedMac
         secureMacFingerprint = codexSecureFingerprint(for: payload.macIdentityPublicKey)
     }
@@ -510,12 +517,14 @@ private extension CodexService {
             lastPairedAt: Date(),
             relayURL: relayURL ?? existing?.relayURL,
             displayName: displayName ?? existing?.displayName,
+            platform: existing?.platform,
             lastResolvedSessionId: existing?.lastResolvedSessionId,
             lastResolvedAt: existing?.lastResolvedAt,
             lastUsedAt: Date()
         )
         SecureStore.writeCodable(trustedMacRegistry, for: CodexSecureKeys.trustedMacRegistry)
         SecureStore.writeString(deviceId, for: CodexSecureKeys.lastTrustedMacDeviceId)
+        setSelectedHostDeviceId(deviceId)
         lastTrustedMacDeviceId = deviceId
         secureMacFingerprint = codexSecureFingerprint(for: publicKey)
     }
@@ -627,11 +636,13 @@ private extension CodexService {
         secureConnectionState = .trustedMac
         secureMacFingerprint = codexSecureFingerprint(for: resolved.macIdentityPublicKey)
         SecureStore.writeString(resolved.macDeviceId, for: CodexSecureKeys.lastTrustedMacDeviceId)
+        setSelectedHostDeviceId(resolved.macDeviceId)
         lastTrustedMacDeviceId = resolved.macDeviceId
 
         if var trustedMac = trustedMacRegistry.records[resolved.macDeviceId] {
             trustedMac.relayURL = relayURL
             trustedMac.displayName = resolved.displayName ?? trustedMac.displayName
+            trustedMac.platform = resolved.platform ?? trustedMac.platform
             trustedMac.lastResolvedSessionId = resolved.sessionId
             trustedMac.lastResolvedAt = Date()
             trustedMac.lastUsedAt = Date()

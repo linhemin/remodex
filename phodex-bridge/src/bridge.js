@@ -31,6 +31,7 @@ const { createPushNotificationTracker } = require("./push-notification-tracker")
 const {
   loadOrCreateBridgeDeviceState,
   resolveBridgeRelaySession,
+  normalizeHostPlatform,
 } = require("./secure-device-state");
 const { createBridgeSecureTransport } = require("./secure-transport");
 const { createRolloutLiveMirrorController } = require("./rollout-live-mirror");
@@ -831,11 +832,13 @@ function buildMacRegistrationHeaders(deviceState) {
 }
 
 function buildMacRegistration(deviceState) {
+  const displayName = normalizeNonEmptyString(deviceState?.displayName) || os.hostname();
   const trustedPhoneEntry = Object.entries(deviceState?.trustedPhones || {})[0] || null;
   return {
     macDeviceId: normalizeNonEmptyString(deviceState?.macDeviceId),
     macIdentityPublicKey: normalizeNonEmptyString(deviceState?.macIdentityPublicKey),
-    displayName: normalizeNonEmptyString(os.hostname()),
+    displayName,
+    platform: normalizeHostPlatform(deviceState?.platform || process.platform),
     trustedPhoneDeviceId: normalizeNonEmptyString(trustedPhoneEntry?.[0]),
     trustedPhonePublicKey: normalizeNonEmptyString(trustedPhoneEntry?.[1]),
   };

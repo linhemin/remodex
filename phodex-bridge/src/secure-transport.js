@@ -20,6 +20,7 @@ const {
 const {
   getTrustedPhonePublicKey,
   rememberTrustedPhone,
+  normalizeHostPlatform,
 } = require("./secure-device-state");
 
 const PAIRING_QR_VERSION = 2;
@@ -60,6 +61,8 @@ function createBridgeSecureTransport({
       sessionId,
       macDeviceId: currentDeviceState.macDeviceId,
       macIdentityPublicKey: currentDeviceState.macIdentityPublicKey,
+      displayName: normalizeNonEmptyString(currentDeviceState.displayName) || null,
+      platform: normalizeHostPlatform(currentDeviceState.platform),
       expiresAt: currentPairingExpiresAt,
     };
   }

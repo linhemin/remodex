@@ -94,6 +94,8 @@ struct SidebarView: View {
                     SidebarMacConnectionStatusView(
                         name: trustedPairPresentation.name,
                         systemName: trustedPairPresentation.systemName,
+                        platform: trustedPairPresentation.platform,
+                        pairedDeviceCount: trustedPairPresentation.pairedDeviceCount,
                         isConnected: codex.isConnected
                     )
                 }
