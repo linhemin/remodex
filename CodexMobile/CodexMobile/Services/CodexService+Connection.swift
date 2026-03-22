@@ -949,6 +949,16 @@ extension CodexService {
         relayHostCategory(for: url) == .local
     }
 
+    func buildReconnectURL(baseRelayURL: String) -> String? {
+        guard let sessionId = normalizedRelaySessionId,
+              let relayURL = RelayDiscoveryCoordinator.normalizedRelayURL(from: baseRelayURL)?
+                .absoluteString else {
+            return nil
+        }
+
+        return "\(relayURL)/\(sessionId)"
+    }
+
     // Chooses the most direct relay transport for LAN-style hosts plus private overlays like Tailscale.
     // Tailscale's 100.64.0.0/10 range should bypass the WebSocket URL path that iOS may proxy.
     func prefersDirectRelayTransport(for url: URL) -> Bool {

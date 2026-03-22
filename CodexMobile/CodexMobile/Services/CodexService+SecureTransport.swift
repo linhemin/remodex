@@ -324,10 +324,26 @@ extension CodexService {
 
     // Used by: ContentViewModel trusted reconnect path.
     func resolveTrustedMacSession() async throws -> CodexTrustedSessionResolveResponse {
+        if let relayURL = preferredTrustedMacRecord?.relayURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !relayURL.isEmpty {
+            return try await resolveTrustedMacSession(via: relayURL)
+        }
+
+        guard let relayURL = rankReconnectCandidates().first?.url.absoluteString else {
+            throw CodexTrustedSessionResolveError.noTrustedMac
+        }
+
+        return try await resolveTrustedMacSession(via: relayURL)
+    }
+
+    func resolveTrustedMacSession(via relayURL: String) async throws -> CodexTrustedSessionResolveResponse {
+        if let trustedSessionResolverByRelayURLOverride {
+            return try await trustedSessionResolverByRelayURLOverride(relayURL)
+        }
         if let trustedSessionResolverOverride {
             return try await trustedSessionResolverOverride()
         }
-        return try await resolveTrustedMacSessionImpl()
+        return try await resolveTrustedMacSessionImpl(relayURL: relayURL)
     }
 
     // Persists the resolved live relay session and resets replay cursors when the live session changed.
@@ -526,12 +542,8 @@ private extension CodexService {
     }
 
     // Resolves the live relay session for the preferred trusted Mac before we reconnect the socket.
-    func resolveTrustedMacSessionImpl() async throws -> CodexTrustedSessionResolveResponse {
+    func resolveTrustedMacSessionImpl(relayURL: String) async throws -> CodexTrustedSessionResolveResponse {
         guard let trustedMac = preferredTrustedMacRecord else {
-            throw CodexTrustedSessionResolveError.noTrustedMac
-        }
-        guard let relayURL = trustedMac.relayURL?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !relayURL.isEmpty else {
             throw CodexTrustedSessionResolveError.noTrustedMac
         }
         guard let resolveURL = trustedSessionResolveURL(from: relayURL) else {

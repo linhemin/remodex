@@ -317,25 +317,45 @@ extension ContentViewModel {
             return .fallbackToSaved
         }
 
-        do {
-            guard let trustedReconnectURL = try await resolvedTrustedReconnectURL(codex: codex) else {
-                return .fallbackToSaved
+        var lastTrustedReconnectError: CodexTrustedSessionResolveError?
+        var lastUnexpectedError: Error?
+
+        for candidate in codex.rankReconnectCandidates() {
+            do {
+                guard let trustedReconnectURL = try await resolvedTrustedReconnectURL(
+                    codex: codex,
+                    relayURL: candidate.url.absoluteString
+                ) else {
+                    continue
+                }
+                return .use(trustedReconnectURL)
+            } catch let error as CodexTrustedSessionResolveError {
+                if case .rePairRequired = error {
+                    return trustedReconnectResolution(for: error, codex: codex)
+                }
+                lastTrustedReconnectError = error
+            } catch {
+                lastUnexpectedError = error
             }
-            return .use(trustedReconnectURL)
-        } catch let error as CodexTrustedSessionResolveError {
-            return trustedReconnectResolution(for: error, codex: codex)
-        } catch {
-            if !codex.hasSavedRelaySession {
-                codex.lastErrorMessage = error.localizedDescription
-            }
-            return .fallbackToSaved
         }
+
+        if let lastTrustedReconnectError {
+            return trustedReconnectResolution(for: lastTrustedReconnectError, codex: codex)
+        }
+
+        if let lastUnexpectedError {
+            if !codex.hasSavedRelaySession {
+                codex.lastErrorMessage = lastUnexpectedError.localizedDescription
+            }
+        }
+
+        return .fallbackToSaved
     }
 
     // Builds the live reconnect URL after the trusted-session lookup succeeds.
-    private func resolvedTrustedReconnectURL(codex: CodexService) async throws -> String? {
-        let resolved = try await codex.resolveTrustedMacSession()
-        guard let relayURL = codex.normalizedRelayURL else {
+    private func resolvedTrustedReconnectURL(codex: CodexService, relayURL: String) async throws -> String? {
+        let resolved = try await codex.resolveTrustedMacSession(via: relayURL)
+        guard let relayURL = RelayDiscoveryCoordinator.normalizedRelayURL(from: relayURL)?.absoluteString else {
             return nil
         }
         return "\(relayURL)/\(resolved.sessionId)"
@@ -379,10 +399,12 @@ extension ContentViewModel {
 
     // Reuses the last QR-resolved session when trusted lookup is unavailable or not yet supported end-to-end.
     private func savedReconnectURL(codex: CodexService) -> String? {
-        guard let sessionId = codex.normalizedRelaySessionId,
-              let relayURL = codex.normalizedRelayURL else {
-            return nil
+        for candidate in codex.rankReconnectCandidates() {
+            if let fullURL = codex.buildReconnectURL(baseRelayURL: candidate.url.absoluteString) {
+                return fullURL
+            }
         }
-        return "\(relayURL)/\(sessionId)"
+
+        return nil
     }
 }

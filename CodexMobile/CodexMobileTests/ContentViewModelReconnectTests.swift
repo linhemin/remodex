@@ -72,6 +72,42 @@ final class ContentViewModelReconnectTests: XCTestCase {
         XCTAssertEqual(service.lastErrorMessage, "Your trusted Mac is offline right now.")
     }
 
+    func testPreferredReconnectURLUsesBonjourCandidateBeforeSavedRelay() async {
+        let service = makeService()
+        let viewModel = ContentViewModel()
+        let macDeviceID = "mac-\(UUID().uuidString)"
+        let bonjourRelayURL = "ws://macbook-pro.local:9000/relay"
+        let savedRelayURL = "wss://relay.example/relay"
+        var attemptedRelayURLs: [String] = []
+
+        service.trustedMacRegistry.records[macDeviceID] = CodexTrustedMacRecord(
+            macDeviceId: macDeviceID,
+            macIdentityPublicKey: Data(repeating: 11, count: 32).base64EncodedString(),
+            lastPairedAt: Date(),
+            relayURL: savedRelayURL,
+            lastLocalRelayURL: bonjourRelayURL
+        )
+        service.lastTrustedMacDeviceId = macDeviceID
+        service.relaySessionId = "saved-session"
+        service.relayUrl = savedRelayURL
+        service.relayMacDeviceId = macDeviceID
+        service.trustedSessionResolverByRelayURLOverride = { relayURL in
+            attemptedRelayURLs.append(relayURL)
+            return CodexTrustedSessionResolveResponse(
+                ok: true,
+                macDeviceId: macDeviceID,
+                macIdentityPublicKey: Data(repeating: 12, count: 32).base64EncodedString(),
+                displayName: "Desk Mac",
+                sessionId: "live-session-1"
+            )
+        }
+
+        let reconnectURL = await viewModel.preferredReconnectURL(codex: service)
+
+        XCTAssertEqual(attemptedRelayURLs, [bonjourRelayURL])
+        XCTAssertEqual(reconnectURL, "\(bonjourRelayURL)/live-session-1")
+    }
+
     private func makeService() -> CodexService {
         let suiteName = "ContentViewModelReconnectTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard

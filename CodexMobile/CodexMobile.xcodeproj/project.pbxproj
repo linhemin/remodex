@@ -19,6 +19,7 @@
 		8CE11223A4B5C6D7E8F90123 /* SidebarRunBadgePerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE11223A4B5C6D7E8F90124 /* SidebarRunBadgePerformanceTests.swift */; };
 		8D1F2A3B4C5D6E7F8091A2B3 /* CodexServiceConnectionErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D1F2A3B4C5D6E7F8091A2B4 /* CodexServiceConnectionErrorTests.swift */; };
 		8F1A2B3C4D5E6F708192A3B4 /* CodexPushNotificationRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F1A2B3C4D5E6F708192A3B5 /* CodexPushNotificationRegistrationTests.swift */; };
+		93A4B5C6D7E8F90123456789 /* ContentViewModelReconnectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A4B5C6D7E8F9012345678A /* ContentViewModelReconnectTests.swift */; };
 		90120FC72C9B8D0F5F03F14D /* CodexMobileUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D523A0A98D6540D0E2EE6131 /* CodexMobileUITests.swift */; };
 		9D7C9A8B7E6D5C4B3A291817 /* TurnViewModelQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D7C9A8B7E6D5C4B3A291818 /* TurnViewModelQueueTests.swift */; };
 		A1B2C3D4E5F60718293A4B52 /* CodexSecurePairingStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B53 /* CodexSecurePairingStateTests.swift */; };
@@ -69,6 +70,7 @@
 		8CE11223A4B5C6D7E8F90124 /* SidebarRunBadgePerformanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SidebarRunBadgePerformanceTests.swift; sourceTree = "<group>"; };
 		8D1F2A3B4C5D6E7F8091A2B4 /* CodexServiceConnectionErrorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CodexServiceConnectionErrorTests.swift; sourceTree = "<group>"; };
 		8F1A2B3C4D5E6F708192A3B5 /* CodexPushNotificationRegistrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CodexPushNotificationRegistrationTests.swift; sourceTree = "<group>"; };
+		93A4B5C6D7E8F9012345678A /* ContentViewModelReconnectTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ContentViewModelReconnectTests.swift; sourceTree = "<group>"; };
 		9A37794F4B32C1952A3770E0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		9D7C9A8B7E6D5C4B3A291818 /* TurnViewModelQueueTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TurnViewModelQueueTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B53 /* CodexSecurePairingStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CodexSecurePairingStateTests.swift; sourceTree = "<group>"; };
@@ -134,6 +136,7 @@
 				C1D2E3F40516273849A5B6C7 /* CodexServiceIncomingCommandExecutionTests.swift */,
 				8D1F2A3B4C5D6E7F8091A2B4 /* CodexServiceConnectionErrorTests.swift */,
 				8F1A2B3C4D5E6F708192A3B5 /* CodexPushNotificationRegistrationTests.swift */,
+				93A4B5C6D7E8F9012345678A /* ContentViewModelReconnectTests.swift */,
 				D4F56781234567890ABCDE02 /* CodexServiceIncomingRunIndicatorTests.swift */,
 				E1A2B3C4D5E6F708192A3B4D /* QRScannerPairingValidatorTests.swift */,
 				2A6D4B8C1E3F507192A4B6C9 /* CodexStatusTests.swift */,
@@ -360,6 +363,7 @@
 				B1C2D3E4F5061728394A5B6C /* CodexServiceIncomingCommandExecutionTests.swift in Sources */,
 				8D1F2A3B4C5D6E7F8091A2B3 /* CodexServiceConnectionErrorTests.swift in Sources */,
 				8F1A2B3C4D5E6F708192A3B4 /* CodexPushNotificationRegistrationTests.swift in Sources */,
+				93A4B5C6D7E8F90123456789 /* ContentViewModelReconnectTests.swift in Sources */,
 				D4F56781234567890ABCDE01 /* CodexServiceIncomingRunIndicatorTests.swift in Sources */,
 				E1A2B3C4D5E6F708192A3B4C /* QRScannerPairingValidatorTests.swift in Sources */,
 				2A6D4B8C1E3F507192A4B6C8 /* CodexStatusTests.swift in Sources */,

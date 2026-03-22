@@ -381,6 +381,10 @@ final class CodexService {
     @ObservationIgnored var requestTransportOverride: ((String, JSONValue?) async throws -> RPCMessage)?
     // Test hook: stubs trusted-session lookup without performing a real relay HTTP request.
     @ObservationIgnored var trustedSessionResolverOverride: (() async throws -> CodexTrustedSessionResolveResponse)?
+    // Test hook: stubs trusted-session lookup for a specific relay candidate URL.
+    @ObservationIgnored var trustedSessionResolverByRelayURLOverride: ((String) async throws -> CodexTrustedSessionResolveResponse)?
+    // Test hook: injects ranked reconnect candidates without Bonjour/network dependencies.
+    @ObservationIgnored var discoveryTestOverride: [RelayDiscoveryCandidate]?
     var streamingAssistantMessageByTurnID: [String: String] = [:]
     var streamingSystemMessageByItemID: [String: String] = [:]
     /// Rich metadata for command execution tool calls, keyed by itemId.
@@ -679,11 +683,59 @@ final class CodexService {
     }
 
     var hasTrustedMacReconnectCandidate: Bool {
-        preferredTrustedMacRecord?.relayURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        !rankReconnectCandidates().isEmpty
     }
 
     var hasReconnectCandidate: Bool {
         hasSavedRelaySession || hasTrustedMacReconnectCandidate
+    }
+
+    // Combines remembered local, overlay, and saved relay endpoints into one ordered reconnect list.
+    func rankReconnectCandidates() -> [RelayDiscoveryCandidate] {
+        if let discoveryTestOverride {
+            return RelayDiscoveryCoordinator.rankCandidates(
+                discoveryTestOverride,
+                preferredMacDeviceId: preferredTrustedMacDeviceId
+            )
+        }
+
+        var candidates: [RelayDiscoveryCandidate] = []
+
+        if let trustedMac = preferredTrustedMacRecord {
+            let macDeviceId = trustedMac.macDeviceId
+
+            if let relayURL = trustedMac.lastLocalRelayURL?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty {
+                candidates.append(.bonjour(relayURL, macDeviceId: macDeviceId))
+            }
+
+            if let relayURL = trustedMac.lastOverlayRelayURL?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty {
+                candidates.append(.overlay(relayURL, macDeviceId: macDeviceId))
+            }
+
+            if let relayURL = trustedMac.relayURL?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty {
+                candidates.append(.savedRelay(relayURL, macDeviceId: macDeviceId))
+            }
+        }
+
+        if let relayURL = normalizedRelayURL {
+            candidates.append(
+                .savedRelay(
+                    relayURL,
+                    macDeviceId: normalizedRelayMacDeviceId ?? preferredTrustedMacDeviceId
+                )
+            )
+        }
+
+        return RelayDiscoveryCoordinator.rankCandidates(
+            candidates,
+            preferredMacDeviceId: preferredTrustedMacDeviceId
+        )
     }
 
     // Separates transport readiness from post-connect hydration so the UI can explain delays honestly.
