@@ -217,6 +217,7 @@ function startBridge({
       shutdown(codex, () => socket, () => {
         isShuttingDown = true;
         clearReconnectTimer();
+        localRelayAdvertiser.stop();
       });
       return;
     }

@@ -49,6 +49,48 @@ test("startBridge stops the local relay advertiser before exiting on codex error
   }
 });
 
+test("startBridge stops the local relay advertiser before exiting on fatal relay close", () => {
+  const state = loadBridgeWithStubs();
+  try {
+    const bridge = requireFreshBridge();
+
+    assert.doesNotThrow(() => {
+      bridge.startBridge({
+        config: {
+          relayUrl: "ws://relay.local:9000/relay",
+          refreshEnabled: false,
+          refreshDebounceMs: 0,
+          refreshCommand: "",
+          codexBundleId: "com.example.codex",
+          codexAppPath: "/Applications/Codex.app",
+          pushServiceUrl: "",
+          pushPreviewMaxChars: 0,
+          codexEndpoint: "",
+        },
+        printPairingQr: false,
+        onBridgeStatus() {},
+      });
+    });
+
+    assert.ok(state.sockets.length > 0, "expected relay socket to be created");
+    const socket = state.sockets[0];
+    assert.ok(typeof socket.handlers.get("close") === "function", "expected relay close handler to be registered");
+
+    assert.throws(
+      () => socket.handlers.get("close")(4000),
+      /process\.exit:0/
+    );
+
+    assert.deepEqual(state.events.slice(0, 3), [
+      "start",
+      "stop",
+      "exit:0",
+    ]);
+  } finally {
+    state.restore();
+  }
+});
+
 function loadBridgeWithStubs() {
   const bridgePath = require.resolve("../src/bridge");
   delete require.cache[bridgePath];
@@ -56,11 +98,13 @@ function loadBridgeWithStubs() {
   const originalLoad = Module._load;
   const originalExit = process.exit;
   const originalOn = process.on;
+  const originalSetTimeout = global.setTimeout;
   const originalConsoleError = console.error;
   const originalConsoleLog = console.log;
   const state = {
     events: [],
     onError: null,
+    sockets: [],
   };
 
   const fakeWebSocket = class FakeWebSocket {
@@ -72,6 +116,7 @@ function loadBridgeWithStubs() {
       this.options = options;
       this.readyState = FakeWebSocket.CONNECTING;
       this.handlers = new Map();
+      state.sockets.push(this);
     }
 
     on(event, handler) {
@@ -261,6 +306,10 @@ function loadBridgeWithStubs() {
     throw new Error(`process.exit:${code}`);
   };
   process.on = () => process;
+  global.setTimeout = (callback) => {
+    callback();
+    return 0;
+  };
   console.error = () => {};
   console.log = () => {};
 
@@ -268,6 +317,7 @@ function loadBridgeWithStubs() {
     Module._load = originalLoad;
     process.exit = originalExit;
     process.on = originalOn;
+    global.setTimeout = originalSetTimeout;
     console.error = originalConsoleError;
     console.log = originalConsoleLog;
     delete require.cache[bridgePath];
