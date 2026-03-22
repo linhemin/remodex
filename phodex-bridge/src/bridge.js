@@ -169,6 +169,7 @@ function startBridge({
       pid: process.pid,
       lastError: error.message,
     });
+    localRelayAdvertiser.stop();
     if (config.codexEndpoint) {
       console.error(`[remodex] Failed to connect to Codex endpoint: ${config.codexEndpoint}`);
     } else {
