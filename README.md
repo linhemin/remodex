@@ -127,6 +127,7 @@ After that first scan:
 - the iPhone saves the Mac as a trusted device
 - the Mac bridge keeps its identity locally
 - the app tries trusted reconnect automatically on later launches
+- reconnect prefers remembered LAN or private-overlay relay candidates before falling back to the saved relay URL
 - the QR remains available as a recovery path if trust changes or the relay cannot resolve the live session
 
 For now, the daemon-backed trusted reconnect path is macOS-only. If you self-host on Linux or Windows, pairing still works, but the bridge runs in the foreground unless you set up your own OS-specific service wrapper.
@@ -142,6 +143,19 @@ cd remodex
 That launcher starts a local relay, points the bridge at `ws://<your-host>:9000/relay`, and prints the pairing QR for the iPhone app.
 
 For iPhone self-hosting, the recommended path is Tailscale or another stable private network. Plain LAN pairing over `ws://<lan-ip>` on the same Wi-Fi is still available for local testing, but it can be unreliable on some iOS devices even when the relay and Wi-Fi are healthy.
+
+### LAN-First Reconnect Behavior
+
+Remodex keeps the relay protocol and secure handshake unchanged, but trusted reconnect now ranks relay candidates in this order:
+
+1. The last remembered LAN/local relay endpoint for that trusted Mac
+2. The last remembered private-overlay relay endpoint, such as Tailscale
+3. The saved relay URL from the original pairing flow
+4. Remote trusted-session resolve or QR recovery if none of the above work
+
+The bridge-side local relay advertiser is designed for Bonjour/mDNS-style publication, but it only exposes safe metadata such as `macDeviceId`, `displayName`, and `relayPort`. It must never publish live `sessionId` values, notification secrets, or any other bearer-like pairing material.
+
+Private-overlay candidates such as Tailscale addresses are remembered internally by the iPhone app after a successful secure reconnect. They are part of the reconnect ranking logic, not extra user-facing configuration.
 
 Options:
 
@@ -462,7 +476,7 @@ No. The phone session is live, but the `Codex.app` GUI is not a true live mirror
 Yes. That is the intended forking path. The transport and push-service code are in [`relay/`](relay/); point `REMODEX_RELAY` at the instance you run.
 
 **Can I use Tailscale?**
-Yes. It is the recommended private-network option for self-hosting on iPhone. Run your relay somewhere reachable over Tailscale, set `REMODEX_RELAY` to that relay URL, pair once with QR, then let the app reconnect to the trusted Mac through the same relay.
+Yes. It is the recommended private-network option for self-hosting on iPhone. Run your relay somewhere reachable over Tailscale, set `REMODEX_RELAY` to that relay URL, pair once with QR, then let the app reconnect to the trusted Mac through the remembered overlay candidate before falling back to the saved remote relay path.
 
 **Is the transport layer safe for sensitive work?**
 It is much stronger than a plain text proxy: traffic can be protected in transit with TLS, application payloads are end-to-end encrypted after the secure handshake, and all Codex execution still happens on your Mac. The transport can still observe connection metadata and handshake control messages, so the tightest trust model is to run it yourself.

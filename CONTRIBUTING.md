@@ -60,6 +60,8 @@ This launcher:
 3. Points the bridge at that relay
 4. Prints a QR code in your terminal for the initial trust bootstrap
 
+For LAN-first reconnect work, keep the bridge-side local relay advertiser free of secrets. Bonjour/mDNS-style advertisement metadata may include stable identifiers such as `macDeviceId`, `displayName`, and `relayPort`, but it must never include live `sessionId` values, notification secrets, or any other bearer-like pairing material.
+
 If you only want the bridge process:
 
 ```sh
@@ -97,6 +99,14 @@ The app uses SwiftUI and the current project target is iOS 18.6. No CocoaPods or
 4. Send a message — you should see Codex respond in real-time
 5. Try git operations from the phone (commit, push, branch switching)
 6. Reopen the app and verify that the trusted reconnect path is used instead of forcing a fresh QR immediately
+
+### LAN-First Verification Checklist
+
+- [ ] README explains that trusted reconnect prefers remembered LAN candidates, then remembered private-overlay candidates, then the saved relay URL
+- [ ] CONTRIBUTING explains that local relay advertisement metadata must stay free of session ids and other secrets
+- [ ] Same-Wi-Fi manual check: pair once, relaunch the app on the same network, and verify reconnect prefers the remembered `.local` or reachable LAN relay candidate
+- [ ] Tailscale manual check: pair once, relaunch with the Mac reachable on Tailscale, and verify reconnect prefers the remembered overlay candidate before the saved relay URL
+- [ ] Remote fallback manual check: make LAN and overlay candidates unavailable, then verify reconnect falls back to the saved relay path or QR recovery without silently clearing trust
 
 ### Environment variables
 
@@ -159,7 +169,7 @@ remodex/
 ### Trust model
 
 - The first QR pairing is possession-based: it contains the relay URL and a live session ID.
-- After that first handshake, the iPhone stores a trusted Mac record and can ask the relay for the Mac's current live session again.
+- After that first handshake, the iPhone stores a trusted Mac record, remembers successful LAN/private-overlay relay candidates internally, and can ask the relay for the Mac's current live session again.
 - Set `REMODEX_RELAY` to a relay you control when you are not using the local launcher. Use `wss://` when you want TLS in transit.
 - Remodex uses an authenticated end-to-end encrypted transport after pairing completes. The relay code is public for inspection, but deployed relay details should stay in private config.
 - The built-in daemon / background service path is currently macOS-only. Linux and Windows can still run the bridge, but contributors should treat the daemon logic as platform-specific.
