@@ -39,10 +39,10 @@ function createLocalRelayAdvertiser({
         return;
       }
 
-      isRunning = true;
       if (typeof startImpl === "function") {
         startImpl(normalizedMetadata);
       }
+      isRunning = true;
     },
     stop() {
       if (!isRunning) {

@@ -54,3 +54,20 @@ test("createLocalRelayAdvertiser starts once and stops once", () => {
     ["stop", metadata],
   ]);
 });
+
+test("createLocalRelayAdvertiser clears running state when startImpl throws", () => {
+  const calls = [];
+  const advertiser = createLocalRelayAdvertiser({
+    startImpl() {
+      calls.push("start");
+      throw new Error("boom");
+    },
+  });
+
+  assert.throws(() => advertiser.start(), /boom/);
+  assert.equal(advertiser.isRunning, false);
+
+  assert.throws(() => advertiser.start(), /boom/);
+  assert.equal(advertiser.isRunning, false);
+  assert.deepEqual(calls, ["start", "start"]);
+});
