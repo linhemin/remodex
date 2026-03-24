@@ -311,7 +311,7 @@ extension CodexService {
             )
             clearGPTLoginCallbackState()
             gptAccountErrorMessage = nil
-            startGPTLoginSyncIfNeeded()
+            await refreshGPTAccountState()
         } catch {
             gptAccountErrorMessage = error.localizedDescription
         }
@@ -330,7 +330,6 @@ extension CodexService {
         if wasSuccessful {
             clearGPTLoginCallbackState()
             gptAccountErrorMessage = nil
-            startGPTLoginSyncIfNeeded()
             Task { await refreshGPTAccountState() }
             return
         }
@@ -723,14 +722,15 @@ extension CodexService {
     func loggedOutGPTAccountSnapshot(
         status: CodexGPTAccountStatus,
         needsReauth: Bool = false,
-        retaining snapshot: CodexGPTAccountSnapshot = codexGPTAccountInitialSnapshot()
+        retaining snapshot: CodexGPTAccountSnapshot? = nil
     ) -> CodexGPTAccountSnapshot {
-        CodexGPTAccountSnapshot(
+        let retainedSnapshot = snapshot ?? codexGPTAccountInitialSnapshot()
+        return CodexGPTAccountSnapshot(
             status: status,
             authMethod: nil,
-            email: needsReauth ? snapshot.email : nil,
-            displayName: needsReauth ? snapshot.displayName : nil,
-            planType: needsReauth ? snapshot.planType : nil,
+            email: needsReauth ? retainedSnapshot.email : nil,
+            displayName: needsReauth ? retainedSnapshot.displayName : nil,
+            planType: needsReauth ? retainedSnapshot.planType : nil,
             loginInFlight: false,
             needsReauth: needsReauth,
             expiresAt: nil,

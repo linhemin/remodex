@@ -94,6 +94,7 @@ extension CodexService {
             try await performSecureHandshake()
 
             isConnected = true
+            connectionEstablishedAt = .now
             shouldAutoReconnectOnForeground = false
             connectionRecoveryState = .idle
             lastErrorMessage = nil
@@ -134,6 +135,7 @@ extension CodexService {
         cancelCurrentSocketConnection()
 
         isConnected = false
+        connectionEstablishedAt = nil
         isInitialized = false
         isLoadingThreads = false
         isLoadingModels = false

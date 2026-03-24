@@ -27,6 +27,7 @@ Control [Codex](https://openai.com/index/codex/) from your iPhone. Remodex is a 
 - macOS-only background bridge service via `launchd`
 - Live streaming on your phone while Codex runs on your Mac
 - Shared thread history with Codex on your Mac
+- Optional background connection mode that uses Live Activity plus location keepalive, with explicit user opt-in and higher battery cost
 
 The repo stays local-first and self-host friendly: the iOS app source does not embed a public hosted endpoint, and the transport layer remains inspectable for anyone who wants to run their own setup.
 
@@ -43,6 +44,8 @@ If you want the public-repo distribution model explained clearly, read [SELF_HOS
 Build the iOS app from source in Xcode, install your own signed build on-device, then use the in-app onboarding flow to pair by scanning the QR from `remodex up`.
 
 If you scan the pairing QR with a generic camera or QR reader before installing the app, your device may treat the QR payload as plain text and open a web search instead of pairing.
+
+The iOS app also includes an optional background-connection mode. On first use, Remodex can ask whether you want it to start a Live Activity and request location permission so it can try to keep your paired Mac connection alive while the app is locked or in another app. This mode is user-controlled, increases battery usage, and still cannot guarantee a permanent connection.
 
 ## Architecture
 

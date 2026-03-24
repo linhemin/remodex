@@ -19,15 +19,34 @@ final class CodexPlanModeTests: XCTestCase {
         service.availableModels = [makeModel()]
         service.setSelectedModelId("gpt-5-codex")
 
+        var capturedMethods: [String] = []
         var capturedTurnStartParams: [JSONValue] = []
         service.requestTransportOverride = { method, params in
-            XCTAssertEqual(method, "turn/start")
-            capturedTurnStartParams.append(params ?? .null)
-            return RPCMessage(
-                id: .string(UUID().uuidString),
-                result: .object(["turnId": .string("turn-live")]),
-                includeJSONRPC: false
-            )
+            capturedMethods.append(method)
+            switch method {
+            case "thread/resume":
+                return RPCMessage(
+                    id: .string(UUID().uuidString),
+                    result: .object([
+                        "thread": .object(["id": .string("thread-plan"), "title": .string("Plan thread")]),
+                    ]),
+                    includeJSONRPC: false
+                )
+            case "turn/start":
+                capturedTurnStartParams.append(params ?? .null)
+                return RPCMessage(
+                    id: .string(UUID().uuidString),
+                    result: .object(["turnId": .string("turn-live")]),
+                    includeJSONRPC: false
+                )
+            default:
+                XCTFail("Unexpected method \(method)")
+                return RPCMessage(
+                    id: .string(UUID().uuidString),
+                    result: .object([:]),
+                    includeJSONRPC: false
+                )
+            }
         }
 
         let viewModel = makeViewModel()
@@ -37,6 +56,7 @@ final class CodexPlanModeTests: XCTestCase {
         await waitForSendCompletion(viewModel)
 
         XCTAssertFalse(viewModel.isPlanModeArmed)
+        XCTAssertEqual(capturedMethods, ["thread/resume", "turn/start"])
         XCTAssertEqual(capturedTurnStartParams.count, 1)
         XCTAssertEqual(
             capturedTurnStartParams[0].objectValue?["collaborationMode"]?.objectValue?["mode"]?.stringValue,
@@ -51,17 +71,20 @@ final class CodexPlanModeTests: XCTestCase {
             "medium"
         )
 
+        service.clearRunningState(for: "thread-plan")
+        service.setActiveTurnID(nil, for: "thread-plan")
+        service.activeTurnId = nil
         viewModel.input = "Normal follow-up"
         viewModel.sendTurn(codex: service, threadID: "thread-plan")
         await waitForSendCompletion(viewModel)
 
+        XCTAssertEqual(capturedMethods, ["thread/resume", "turn/start", "turn/start"])
         XCTAssertEqual(capturedTurnStartParams.count, 2)
         XCTAssertNil(capturedTurnStartParams[1].objectValue?["collaborationMode"])
     }
 
     func testUnsupportedPlanModeFallsBackToNormalTurnAndStopsRetryingPlanField() async throws {
         let service = makeService()
-        service.isConnected = true
         service.supportsTurnCollaborationMode = true
         service.availableModels = [makeModel()]
         service.setSelectedModelId("gpt-5-codex")
@@ -155,10 +178,22 @@ final class CodexPlanModeTests: XCTestCase {
     func testPlanModeSendFailureRearmsToggleAndSkipsFallbackRequest() async {
         let service = makeService()
         service.isConnected = true
+        service.supportsTurnCollaborationMode = true
 
-        var attemptedRequestCount = 0
-        service.requestTransportOverride = { _, _ in
-            attemptedRequestCount += 1
+        var attemptedMethods: [String] = []
+        service.requestTransportOverride = { method, _ in
+            attemptedMethods.append(method)
+            if method == "thread/resume" {
+                return RPCMessage(
+                    id: .string(UUID().uuidString),
+                    result: .object([
+                        "thread": .object(["id": .string("thread-plan-failure"), "title": .string("Plan failure")]),
+                    ]),
+                    includeJSONRPC: false
+                )
+            }
+
+            XCTFail("Unexpected method \(method)")
             return RPCMessage(
                 id: .string(UUID().uuidString),
                 result: .object([:]),
@@ -172,7 +207,7 @@ final class CodexPlanModeTests: XCTestCase {
         viewModel.sendTurn(codex: service, threadID: "thread-plan-failure")
         await waitForSendCompletion(viewModel)
 
-        XCTAssertEqual(attemptedRequestCount, 0)
+        XCTAssertEqual(attemptedMethods, ["thread/resume"])
         XCTAssertTrue(viewModel.isPlanModeArmed)
         XCTAssertEqual(viewModel.input, "Plan this flow")
         XCTAssertEqual(

@@ -3,6 +3,7 @@
 // Layer: View
 // Exports: SettingsView
 
+import CoreLocation
 import SwiftUI
 import UIKit
 
@@ -22,6 +23,7 @@ struct SettingsView: View {
                 SettingsArchivedChatsCard()
                 SettingsAppearanceCard(appFontStyle: appFontStyleBinding)
                 SettingsNotificationsCard()
+                SettingsBackgroundConnectionCard()
                 SettingsGPTAccountCard()
                 runtimeDefaultsSection
                 SettingsAboutCard()
@@ -518,6 +520,111 @@ private struct SettingsNotificationsCard: View {
         case .notDetermined: "Not requested"
         @unknown default: "Unknown"
         }
+    }
+}
+
+private struct SettingsBackgroundConnectionCard: View {
+    @Environment(BackgroundConnectionCoordinator.self) private var backgroundConnectionCoordinator
+    @Environment(\.scenePhase) private var scenePhase
+
+    private let settingsAccentColor = Color(.plan)
+
+    var body: some View {
+        let presentation = SettingsBackgroundConnectionPresentation.make(
+            isEnabled: backgroundConnectionCoordinator.isEnabled,
+            authorization: backgroundConnectionCoordinator.authorizationStatus,
+            isKeepingAlive: backgroundConnectionCoordinator.isKeepaliveActive
+        )
+
+        SettingsCard(title: "Background Connection") {
+            HStack(spacing: 10) {
+                Image(systemName: statusIconName)
+                    .foregroundStyle(statusIconColor)
+                Text("Status")
+                Spacer()
+                SettingsStatusPill(label: presentation.title)
+            }
+
+            Toggle("Keep connected in background", isOn: isEnabledBinding)
+                .tint(settingsAccentColor)
+
+            Text(presentation.detail)
+                .font(AppFont.caption())
+                .foregroundStyle(.secondary)
+
+            Text("Uses a Live Activity plus background location to try to keep your paired Mac connection alive while the app is locked or in the background. This increases battery usage and still cannot guarantee a permanent connection.")
+                .font(AppFont.caption())
+                .foregroundStyle(.secondary)
+
+            if backgroundConnectionCoordinator.isEnabled,
+               backgroundConnectionCoordinator.hasLimitedKeepaliveAuthorization {
+                SettingsButton("Allow Always Location") {
+                    HapticFeedback.shared.triggerImpactFeedback()
+                    backgroundConnectionCoordinator.enableFeatureAndRequestPermissions()
+                }
+            } else if presentation.showsOpenSettingsButton,
+                      backgroundConnectionCoordinator.authorizationStatus != .notDetermined {
+                SettingsButton("Open iOS Settings") {
+                    HapticFeedback.shared.triggerImpactFeedback()
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            }
+        }
+        .task {
+            backgroundConnectionCoordinator.refreshLocationState()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else {
+                return
+            }
+            backgroundConnectionCoordinator.refreshLocationState()
+        }
+    }
+
+    private var isEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { backgroundConnectionCoordinator.isEnabled },
+            set: { isEnabled in
+                HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                if isEnabled {
+                    backgroundConnectionCoordinator.enableFeatureAndRequestPermissions()
+                } else {
+                    Task {
+                        await backgroundConnectionCoordinator.disableFeature()
+                    }
+                }
+            }
+        )
+    }
+
+    private var statusIconName: String {
+        if !backgroundConnectionCoordinator.isEnabled {
+            return "bolt.slash.circle"
+        }
+
+        if backgroundConnectionCoordinator.isKeepaliveActive {
+            return "location.circle.fill"
+        }
+
+        if !backgroundConnectionCoordinator.hasBackgroundKeepaliveAuthorization {
+            return "location.slash.circle"
+        }
+
+        return "checkmark.circle"
+    }
+
+    private var statusIconColor: Color {
+        if !backgroundConnectionCoordinator.isEnabled {
+            return .secondary
+        }
+
+        if !backgroundConnectionCoordinator.hasBackgroundKeepaliveAuthorization {
+            return .orange
+        }
+
+        return .green
     }
 }
 

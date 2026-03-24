@@ -169,6 +169,22 @@ enum CodexRunCompletionResult: String, Equatable, Sendable {
     case failed
 }
 
+struct CodexServiceConnectionSnapshot: Equatable, Sendable {
+    let isConnected: Bool
+    let connectionPhase: CodexConnectionPhase
+    let hasAnyRunningTurn: Bool
+    let isAppInForeground: Bool
+    let hasReconnectCandidate: Bool
+    let pairDisplayName: String?
+    let connectedAt: Date?
+}
+
+@MainActor
+protocol BackgroundConnectionSnapshotControlling: AnyObject {
+    var connectionSnapshot: CodexServiceConnectionSnapshot { get }
+    func attemptBackgroundReconnectIfNeeded() async
+}
+
 enum CodexNotificationPayloadKeys {
     static let source = "source"
     static let threadId = "threadId"
@@ -332,6 +348,8 @@ final class CodexService {
     var modelsErrorMessage: String?
     var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
     var pendingNotificationOpenThreadID: String?
+    // Prevents list-thread reconciliation from recursively re-entering notification routing.
+    var isRoutingPendingNotificationOpen = false
     var supportsStructuredSkillInput = true
     // Runtime compatibility flag for `turn/start.collaborationMode` plan turns.
     var supportsTurnCollaborationMode = false
@@ -357,6 +375,7 @@ final class CodexService {
     var trustedReconnectFailureCount = 0
     var secureConnectionState: CodexSecureConnectionState = .notPaired
     var secureMacFingerprint: String?
+    var connectionEstablishedAt: Date?
     // Keeps the bridge-update UX visible even if connection cleanup resets secure transport state.
     var bridgeUpdatePrompt: CodexBridgeUpdatePrompt?
     var hasPresentedServiceTierBridgeUpdatePrompt = false
@@ -484,13 +503,13 @@ final class CodexService {
         decoder: JSONDecoder = JSONDecoder(),
         defaults: UserDefaults = .standard,
         userNotificationCenter: CodexUserNotificationCentering = UNUserNotificationCenter.current(),
-        remoteNotificationRegistrar: CodexRemoteNotificationRegistering = CodexApplicationRemoteNotificationRegistrar()
+        remoteNotificationRegistrar: CodexRemoteNotificationRegistering? = nil
     ) {
         self.encoder = encoder
         self.decoder = decoder
         self.defaults = defaults
         self.userNotificationCenter = userNotificationCenter
-        self.remoteNotificationRegistrar = remoteNotificationRegistrar
+        self.remoteNotificationRegistrar = remoteNotificationRegistrar ?? CodexApplicationRemoteNotificationRegistrar()
         self.phoneIdentityState = codexPhoneIdentityStateFromSecureStore()
         self.trustedMacRegistry = codexTrustedMacRegistryFromSecureStore()
         self.lastTrustedMacDeviceId = SecureStore.readString(for: CodexSecureKeys.lastTrustedMacDeviceId)
@@ -705,6 +724,18 @@ final class CodexService {
         }
 
         return .connected
+    }
+
+    var connectionSnapshot: CodexServiceConnectionSnapshot {
+        CodexServiceConnectionSnapshot(
+            isConnected: isConnected,
+            connectionPhase: connectionPhase,
+            hasAnyRunningTurn: hasAnyRunningTurn,
+            isAppInForeground: isAppInForeground,
+            hasReconnectCandidate: hasReconnectCandidate,
+            pairDisplayName: trustedPairPresentation?.name,
+            connectedAt: connectionEstablishedAt
+        )
     }
 }
 

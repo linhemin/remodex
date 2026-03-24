@@ -170,6 +170,7 @@ extension CodexService {
         SecureStore.writeString(token, for: CodexSecureKeys.pushDeviceToken)
 
         Task { @MainActor [weak self] in
+            await self?.refreshNotificationAuthorizationStatus()
             await self?.syncManagedPushRegistrationIfNeeded(force: true)
         }
     }
@@ -258,6 +259,8 @@ extension CodexService {
               !pendingThreadId.isEmpty else {
             return false
         }
+        isRoutingPendingNotificationOpen = true
+        defer { isRoutingPendingNotificationOpen = false }
 
         if hasNotificationRoutingCandidate(threadId: pendingThreadId) {
             missingNotificationThreadPrompt = nil
@@ -494,8 +497,13 @@ private extension CodexService {
             return false
         }
 
+        let previousActiveThreadId = activeThreadId
         do {
             try await listThreads()
+            if pendingNotificationOpenThreadID != nil,
+               previousActiveThreadId == nil {
+                activeThreadId = nil
+            }
             return true
         } catch {
             debugRuntimeLog("thread refresh for notification routing failed: \(error.localizedDescription)")

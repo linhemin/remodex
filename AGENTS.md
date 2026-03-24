@@ -28,6 +28,7 @@ This repo is local-first now. Do not reintroduce hosted-service assumptions, rem
 - Merge late reasoning deltas into existing rows; do not spawn fake extra "Thinking..." rows.
 - Ignore late turn-less activity events when the turn is already inactive.
 - Preserve item-aware history reconciliation instead of falling back to `turnId`-only matching.
+- Keep background connection mode explicit and user-controlled: first-run disclosure, Settings toggle, honest battery/location copy, and no promise of 100% permanent connectivity.
 
 ## Local connection guardrails
 

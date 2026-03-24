@@ -9,6 +9,7 @@ import UIKit
 
 struct ContentView: View {
     @Environment(CodexService.self) private var codex
+    @Environment(BackgroundConnectionCoordinator.self) private var backgroundConnectionCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
 
@@ -24,6 +25,7 @@ struct ContentView: View {
     @State private var isSearchActive = false
     @State private var isRetryingBridgeUpdate = false
     @State private var isPreparingManualScanner = false
+    @State private var isShowingBackgroundConnectionPrompt = false
     @State private var threadCompletionBannerDismissTask: Task<Void, Never>?
     @AppStorage("codex.hasSeenOnboarding") private var hasSeenOnboarding = false
 
@@ -34,10 +36,19 @@ struct ContentView: View {
         rootContent
             // Only resume saved-pairing recovery after onboarding is done and the manual scanner is not in control.
             .task {
-                guard hasSeenOnboarding, !isShowingManualScanner else {
+                if hasSeenOnboarding, !isShowingManualScanner {
+                    await viewModel.attemptAutoConnectOnLaunchIfNeeded(codex: codex)
+                }
+                await syncBackgroundConnectionState()
+            }
+            .task(id: codex.connectionSnapshot) {
+                await syncBackgroundConnectionState()
+            }
+            .task(id: shouldOfferBackgroundConnectionPrompt) {
+                guard shouldOfferBackgroundConnectionPrompt else {
                     return
                 }
-                await viewModel.attemptAutoConnectOnLaunchIfNeeded(codex: codex)
+                isShowingBackgroundConnectionPrompt = true
             }
             .onChange(of: showSettings) { _, show in
                 if show {
@@ -135,6 +146,16 @@ struct ContentView: View {
                 }
             } message: { _ in
                 Text("This chat is no longer available. Start a new chat instead?")
+            }
+            .alert("Keep Remodex Connected in Background?", isPresented: $isShowingBackgroundConnectionPrompt) {
+                Button("Not Now", role: .cancel) {
+                    backgroundConnectionCoordinator.markFirstRunPromptPresented()
+                }
+                Button("Enable") {
+                    backgroundConnectionCoordinator.enableFeatureAndRequestPermissions()
+                }
+            } message: {
+                Text("This starts a Live Activity and requests Always Location so Remodex can try to keep your Mac connection alive while the app is locked or in the background. This increases battery usage and still cannot guarantee a permanent connection.")
             }
             .overlay(alignment: .top) {
                 if let banner = codex.threadCompletionBanner {
@@ -408,6 +429,12 @@ struct ContentView: View {
         return !codex.hasReconnectCandidate && !hasDismissedAutomaticScanner
     }
 
+    private var shouldOfferBackgroundConnectionPrompt: Bool {
+        hasSeenOnboarding
+            && !shouldShowQRScanner
+            && backgroundConnectionCoordinator.shouldPresentFirstRunPrompt
+    }
+
     // Shows the remembered pairing shell while a saved pairing can still be retried.
     private var shouldShowReconnectShell: Bool {
         codex.hasReconnectCandidate
@@ -630,6 +657,10 @@ struct ContentView: View {
             selectedThread = first
         }
     }
+
+    private func syncBackgroundConnectionState() async {
+        await backgroundConnectionCoordinator.handle(connectionSnapshot: codex.connectionSnapshot)
+    }
 }
 
 private struct TwoLineHamburgerIcon: View {
@@ -648,4 +679,5 @@ private struct TwoLineHamburgerIcon: View {
 #Preview {
     ContentView()
         .environment(CodexService())
+        .environment(BackgroundConnectionCoordinator())
 }

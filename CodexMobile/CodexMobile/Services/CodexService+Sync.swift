@@ -189,7 +189,10 @@ extension CodexService {
 
             if let localThread = localByID[liveThread.id] {
                 liveThread = mergedThread(liveThread, with: localThread)
-                liveThread.syncState = localThread.syncState
+                let shouldRestoreLiveState =
+                    localThread.syncState == .archivedLocal
+                    && !persistedArchivedIDs.contains(liveThread.id)
+                liveThread.syncState = shouldRestoreLiveState ? .live : localThread.syncState
             } else if persistedArchivedIDs.contains(liveThread.id) {
                 liveThread.syncState = .archivedLocal
             } else {
@@ -235,11 +238,13 @@ extension CodexService {
         // Full reconciliation — always refresh all threads even if busy-roots already hit some.
         refreshAllThreadTimelineStates()
 
-        if activeThreadId == nil {
+        if activeThreadId == nil,
+           pendingNotificationOpenThreadID == nil {
             activeThreadId = firstLiveThreadID()
         }
 
-        if pendingNotificationOpenThreadID != nil {
+        if pendingNotificationOpenThreadID != nil,
+           !isRoutingPendingNotificationOpen {
             // A successful thread/list refresh gives us fresh server truth, so retry
             // any deferred push deep-link without forcing another list round-trip.
             Task { @MainActor [weak self] in

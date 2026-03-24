@@ -15,7 +15,19 @@
 		516497899B5C9A82CD10D93F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9A37794F4B32C1952A3770E0 /* Foundation.framework */; };
 		6F8E129A7BC34A12D45E6F70 /* CodexThreadStartProjectBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F8E129A7BC34A12D45E6F71 /* CodexThreadStartProjectBindingTests.swift */; };
 		7A1B2C3D4E5F60718293A4B5 /* CodexThreadRuntimeOverrideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4B6 /* CodexThreadRuntimeOverrideTests.swift */; };
+		7B1C2D3E4F5061728394A5B6 /* BackgroundConnectionPreferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1C2D3E4F5061728394A5B7 /* BackgroundConnectionPreferenceTests.swift */; };
+		7C1D2E3F405061728394A5B6 /* BackgroundLocationKeepaliveServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1D2E3F405061728394A5B7 /* BackgroundLocationKeepaliveServiceTests.swift */; };
+		7D1E2F30405061728394A5B6 /* BackgroundConnectionLiveActivityStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D1E2F30405061728394A5B7 /* BackgroundConnectionLiveActivityStateTests.swift */; };
+		7E1F2031425364758697A5B6 /* BackgroundConnectionLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1F2031425364758697A5BD /* BackgroundConnectionLiveActivityAttributes.swift */; };
+		7E1F2031425364758697A5B7 /* RemodexBackgroundActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1F2031425364758697A5BF /* RemodexBackgroundActivityBundle.swift */; };
+		7E1F2031425364758697A5B8 /* RemodexBackgroundConnectionWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1F2031425364758697A5C0 /* RemodexBackgroundConnectionWidget.swift */; };
+		7E1F2031425364758697A5B9 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9A37794F4B32C1952A3770E0 /* Foundation.framework */; };
+		7E1F2031425364758697A5BA /* RemodexBackgroundActivityExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 7E1F2031425364758697A5C1 /* RemodexBackgroundActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7E1F2031425364758697A5D1 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E1F2031425364758697A5D2 /* WidgetKit.framework */; };
+		7E1F2031425364758697A5D3 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E1F2031425364758697A5D4 /* SwiftUI.framework */; };
+		8A1D2E3F405061728394A5B6 /* BackgroundConnectionCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A1D2E3F405061728394A5B7 /* BackgroundConnectionCoordinatorTests.swift */; };
 		8B4A2F5E7D1C4B9AA1234567 /* TurnComposerAttachmentIntakePlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4A2F5E7D1C4B9AA1234568 /* TurnComposerAttachmentIntakePlanTests.swift */; };
+		8C1D2E3F405061728394A5B6 /* SettingsBackgroundConnectionPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1D2E3F405061728394A5B7 /* SettingsBackgroundConnectionPresentationTests.swift */; };
 		8CE11223A4B5C6D7E8F90123 /* SidebarRunBadgePerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE11223A4B5C6D7E8F90124 /* SidebarRunBadgePerformanceTests.swift */; };
 		8D1F2A3B4C5D6E7F8091A2B3 /* CodexServiceConnectionErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D1F2A3B4C5D6E7F8091A2B4 /* CodexServiceConnectionErrorTests.swift */; };
 		8F1A2B3C4D5E6F708192A3B4 /* CodexPushNotificationRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F1A2B3C4D5E6F708192A3B5 /* CodexPushNotificationRegistrationTests.swift */; };
@@ -45,6 +57,13 @@
 			remoteGlobalIDString = C09A76AD2F4B8D7B003B3F3A;
 			remoteInfo = CodexMobile;
 		};
+		7E1F2031425364758697A5BB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C09A76A62F4B8D7B003B3F3A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E1F2031425364758697A5C3;
+			remoteInfo = RemodexBackgroundActivityExtension;
+		};
 		E2BB2694093FF25EF91584CB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C09A76A62F4B8D7B003B3F3A /* Project object */;
@@ -53,6 +72,20 @@
 			remoteInfo = CodexMobile;
 		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7E1F2031425364758697A5C4 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7E1F2031425364758697A5BA /* RemodexBackgroundActivityExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		11A2B3C4D5E6F708192A3B4D /* TurnFileAutocompleteTokenTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TurnFileAutocompleteTokenTests.swift; sourceTree = "<group>"; };
@@ -63,7 +96,19 @@
 		6F8E129A7BC34A12D45E6F71 /* CodexThreadStartProjectBindingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CodexThreadStartProjectBindingTests.swift; sourceTree = "<group>"; };
 		74BE370810CFD7A76DC2A25F /* TurnComposerSendAvailabilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TurnComposerSendAvailabilityTests.swift; sourceTree = "<group>"; };
 		7A1B2C3D4E5F60718293A4B6 /* CodexThreadRuntimeOverrideTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CodexThreadRuntimeOverrideTests.swift; sourceTree = "<group>"; };
+		7B1C2D3E4F5061728394A5B7 /* BackgroundConnectionPreferenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundConnectionPreferenceTests.swift; sourceTree = "<group>"; };
+		7C1D2E3F405061728394A5B7 /* BackgroundLocationKeepaliveServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundLocationKeepaliveServiceTests.swift; sourceTree = "<group>"; };
+		7D1E2F30405061728394A5B7 /* BackgroundConnectionLiveActivityStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundConnectionLiveActivityStateTests.swift; sourceTree = "<group>"; };
+		7E1F2031425364758697A5BD /* BackgroundConnectionLiveActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackgroundConnectionLiveActivityAttributes.swift; path = ../CodexMobile/Models/BackgroundConnectionLiveActivityAttributes.swift; sourceTree = "<group>"; };
+		7E1F2031425364758697A5BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7E1F2031425364758697A5BF /* RemodexBackgroundActivityBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RemodexBackgroundActivityBundle.swift; sourceTree = "<group>"; };
+		7E1F2031425364758697A5C0 /* RemodexBackgroundConnectionWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RemodexBackgroundConnectionWidget.swift; sourceTree = "<group>"; };
+		7E1F2031425364758697A5C1 /* RemodexBackgroundActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RemodexBackgroundActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E1F2031425364758697A5D2 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		7E1F2031425364758697A5D4 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		8A1D2E3F405061728394A5B7 /* BackgroundConnectionCoordinatorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundConnectionCoordinatorTests.swift; sourceTree = "<group>"; };
 		8B4A2F5E7D1C4B9AA1234568 /* TurnComposerAttachmentIntakePlanTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TurnComposerAttachmentIntakePlanTests.swift; sourceTree = "<group>"; };
+		8C1D2E3F405061728394A5B7 /* SettingsBackgroundConnectionPresentationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsBackgroundConnectionPresentationTests.swift; sourceTree = "<group>"; };
 		8CE11223A4B5C6D7E8F90124 /* SidebarRunBadgePerformanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SidebarRunBadgePerformanceTests.swift; sourceTree = "<group>"; };
 		8D1F2A3B4C5D6E7F8091A2B4 /* CodexServiceConnectionErrorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CodexServiceConnectionErrorTests.swift; sourceTree = "<group>"; };
 		8F1A2B3C4D5E6F708192A3B5 /* CodexPushNotificationRegistrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CodexPushNotificationRegistrationTests.swift; sourceTree = "<group>"; };
@@ -96,6 +141,16 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		7E1F2031425364758697A5C5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E1F2031425364758697A5B9 /* Foundation.framework in Frameworks */,
+				7E1F2031425364758697A5D1 /* WidgetKit.framework in Frameworks */,
+				7E1F2031425364758697A5D3 /* SwiftUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C09A76AB2F4B8D7B003B3F3A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -132,6 +187,11 @@
 				8F1A2B3C4D5E6F708192A3B5 /* CodexPushNotificationRegistrationTests.swift */,
 				D4F56781234567890ABCDE02 /* CodexServiceIncomingRunIndicatorTests.swift */,
 				E1A2B3C4D5E6F708192A3B4D /* QRScannerPairingValidatorTests.swift */,
+				7B1C2D3E4F5061728394A5B7 /* BackgroundConnectionPreferenceTests.swift */,
+				7C1D2E3F405061728394A5B7 /* BackgroundLocationKeepaliveServiceTests.swift */,
+				7D1E2F30405061728394A5B7 /* BackgroundConnectionLiveActivityStateTests.swift */,
+				8A1D2E3F405061728394A5B7 /* BackgroundConnectionCoordinatorTests.swift */,
+				8C1D2E3F405061728394A5B7 /* SettingsBackgroundConnectionPresentationTests.swift */,
 				2A6D4B8C1E3F507192A4B6C9 /* CodexStatusTests.swift */,
 				6F8E129A7BC34A12D45E6F71 /* CodexThreadStartProjectBindingTests.swift */,
 				F1B2C3D4E5F60718293A4B11 /* CodexGPTAccountTests.swift */,
@@ -154,6 +214,17 @@
 			path = CodexMobileTests;
 			sourceTree = "<group>";
 		};
+		7E1F2031425364758697A5C2 /* RemodexBackgroundActivity */ = {
+			isa = PBXGroup;
+			children = (
+				7E1F2031425364758697A5BE /* Info.plist */,
+				7E1F2031425364758697A5BF /* RemodexBackgroundActivityBundle.swift */,
+				7E1F2031425364758697A5C0 /* RemodexBackgroundConnectionWidget.swift */,
+				7E1F2031425364758697A5BD /* BackgroundConnectionLiveActivityAttributes.swift */,
+			);
+			path = RemodexBackgroundActivity;
+			sourceTree = "<group>";
+		};
 		B593FCA030A810D9E56EC959 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -166,6 +237,8 @@
 			isa = PBXGroup;
 			children = (
 				3B1A9C7D5E4F60718293A4B5 /* BuildSupport/Base.xcconfig */,
+				7E1F2031425364758697A5D2 /* WidgetKit.framework */,
+				7E1F2031425364758697A5D4 /* SwiftUI.framework */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -174,6 +247,7 @@
 			isa = PBXGroup;
 			children = (
 				C09A76B02F4B8D7B003B3F3A /* CodexMobile */,
+				7E1F2031425364758697A5C2 /* RemodexBackgroundActivity */,
 				C09A76AF2F4B8D7B003B3F3A /* Products */,
 				B593FCA030A810D9E56EC959 /* Frameworks */,
 				208D6F189D9F04FCC137EE5A /* CodexMobileTests */,
@@ -186,6 +260,7 @@
 			isa = PBXGroup;
 			children = (
 				C09A76AE2F4B8D7B003B3F3A /* CodexMobile.app */,
+				7E1F2031425364758697A5C1 /* RemodexBackgroundActivityExtension.appex */,
 				FBC8EB1341C49A392A43BFB3 /* CodexMobileTests.xctest */,
 				F0EE6A924EE6B288E7D0DFE1 /* CodexMobileUITests.xctest */,
 			);
@@ -247,6 +322,23 @@
 			productReference = FBC8EB1341C49A392A43BFB3 /* CodexMobileTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		7E1F2031425364758697A5C3 /* RemodexBackgroundActivityExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E1F2031425364758697A5CA /* Build configuration list for PBXNativeTarget "RemodexBackgroundActivityExtension" */;
+			buildPhases = (
+				7E1F2031425364758697A5C7 /* Sources */,
+				7E1F2031425364758697A5C5 /* Frameworks */,
+				7E1F2031425364758697A5C6 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RemodexBackgroundActivityExtension;
+			productName = RemodexBackgroundActivityExtension;
+			productReference = 7E1F2031425364758697A5C1 /* RemodexBackgroundActivityExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		C09A76AD2F4B8D7B003B3F3A /* CodexMobile */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C09A76B92F4B8D7C003B3F3A /* Build configuration list for PBXNativeTarget "CodexMobile" */;
@@ -254,10 +346,12 @@
 				C09A76AA2F4B8D7B003B3F3A /* Sources */,
 				C09A76AB2F4B8D7B003B3F3A /* Frameworks */,
 				C09A76AC2F4B8D7B003B3F3A /* Resources */,
+				7E1F2031425364758697A5C4 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7E1F2031425364758697A5BC /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				C09A76B02F4B8D7B003B3F3A /* CodexMobile */,
@@ -277,6 +371,9 @@
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					7E1F2031425364758697A5C3 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					C09A76AD2F4B8D7B003B3F3A = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -300,6 +397,7 @@
 			projectRoot = "";
 			targets = (
 				C09A76AD2F4B8D7B003B3F3A /* CodexMobile */,
+				7E1F2031425364758697A5C3 /* RemodexBackgroundActivityExtension */,
 				75087BFA4D34C41906650C95 /* CodexMobileTests */,
 				4DA12F4370C3EC1B9280A66F /* CodexMobileUITests */,
 			);
@@ -308,6 +406,13 @@
 
 /* Begin PBXResourcesBuildPhase section */
 		5A5D7883E5CC7BCD3EAC431E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E1F2031425364758697A5C6 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -339,6 +444,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E1F2031425364758697A5C7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E1F2031425364758697A5B6 /* BackgroundConnectionLiveActivityAttributes.swift in Sources */,
+				7E1F2031425364758697A5B7 /* RemodexBackgroundActivityBundle.swift in Sources */,
+				7E1F2031425364758697A5B8 /* RemodexBackgroundConnectionWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C09A76AA2F4B8D7B003B3F3A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -356,6 +471,11 @@
 				8F1A2B3C4D5E6F708192A3B4 /* CodexPushNotificationRegistrationTests.swift in Sources */,
 				D4F56781234567890ABCDE01 /* CodexServiceIncomingRunIndicatorTests.swift in Sources */,
 				E1A2B3C4D5E6F708192A3B4C /* QRScannerPairingValidatorTests.swift in Sources */,
+				7B1C2D3E4F5061728394A5B6 /* BackgroundConnectionPreferenceTests.swift in Sources */,
+				7C1D2E3F405061728394A5B6 /* BackgroundLocationKeepaliveServiceTests.swift in Sources */,
+				7D1E2F30405061728394A5B6 /* BackgroundConnectionLiveActivityStateTests.swift in Sources */,
+				8A1D2E3F405061728394A5B6 /* BackgroundConnectionCoordinatorTests.swift in Sources */,
+				8C1D2E3F405061728394A5B6 /* SettingsBackgroundConnectionPresentationTests.swift in Sources */,
 				2A6D4B8C1E3F507192A4B6C8 /* CodexStatusTests.swift in Sources */,
 				6F8E129A7BC34A12D45E6F70 /* CodexThreadStartProjectBindingTests.swift in Sources */,
 				F1B2C3D4E5F60718293A4B10 /* CodexGPTAccountTests.swift in Sources */,
@@ -380,6 +500,12 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		7E1F2031425364758697A5BC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = RemodexBackgroundActivityExtension;
+			target = 7E1F2031425364758697A5C3 /* RemodexBackgroundActivityExtension */;
+			targetProxy = 7E1F2031425364758697A5BB /* PBXContainerItemProxy */;
+		};
 		AAE44F8D7AD2D1D62A7CE4B0 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = CodexMobile;
@@ -400,12 +526,13 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = HR24WHR326;
+				DEVELOPMENT_TEAM = 9S925D949K;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				PRODUCT_BUNDLE_IDENTIFIER = com.emanueledipietro.CodexMobileTests;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heminlin.remodex.debug.CodexMobileTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -418,12 +545,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = HR24WHR326;
+				DEVELOPMENT_TEAM = 9S925D949K;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				PRODUCT_BUNDLE_IDENTIFIER = com.emanueledipietro.CodexMobileUITests;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heminlin.remodex.debug.CodexMobileUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -432,16 +560,90 @@
 			};
 			name = Debug;
 		};
+		7E1F2031425364758697A5C8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3B1A9C7D5E4F60718293A4B5 /* BuildSupport/Base.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 112;
+				DEVELOPMENT_TEAM = 9S925D949K;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RemodexBackgroundActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heminlin.remodex.debug.BackgroundActivityExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7E1F2031425364758697A5C9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3B1A9C7D5E4F60718293A4B5 /* BuildSupport/Base.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 112;
+				DEVELOPMENT_TEAM = 9S925D949K;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RemodexBackgroundActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heminlin.remodex.debug.BackgroundActivityExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		8426CF6884E52AD84593126D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = HR24WHR326;
+				DEVELOPMENT_TEAM = V24FA66296;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				PRODUCT_BUNDLE_IDENTIFIER = com.emanueledipietro.CodexMobileUITests;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heminlin.remodex.debug.CodexMobileUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -456,12 +658,13 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = HR24WHR326;
+				DEVELOPMENT_TEAM = V24FA66296;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				PRODUCT_BUNDLE_IDENTIFIER = com.emanueledipietro.CodexMobileTests;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heminlin.remodex.debug.CodexMobileTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -506,7 +709,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = HR24WHR326;
+				DEVELOPMENT_TEAM = V24FA66296;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -524,7 +727,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -570,7 +773,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = HR24WHR326;
+				DEVELOPMENT_TEAM = V24FA66296;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -582,7 +785,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -596,15 +799,14 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 3B1A9C7D5E4F60718293A4B5 /* BuildSupport/Base.xcconfig */;
 			buildSettings = {
-				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = Remodex;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
-				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = CodexMobile/CodexMobile.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = CodexMobile/CodexMobile.DebugInstall.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 112;
-				DEVELOPMENT_TEAM = HR24WHR326;
+				DEVELOPMENT_TEAM = 9S925D949K;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "BuildSupport/CodexMobile-Info.plist";
@@ -623,7 +825,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.emanueledipietro.Remodex;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heminlin.remodex.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -651,7 +853,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 112;
-				DEVELOPMENT_TEAM = HR24WHR326;
+				DEVELOPMENT_TEAM = 9S925D949K;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "BuildSupport/CodexMobile-Info.plist";
@@ -670,7 +872,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.emanueledipietro.Remodex;
+				PRODUCT_BUNDLE_IDENTIFIER = com.heminlin.remodex.debug;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -694,6 +896,15 @@
 			buildConfigurations = (
 				8426CF6884E52AD84593126D /* Release */,
 				65A5DA106464FE5B4A8C283B /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E1F2031425364758697A5CA /* Build configuration list for PBXNativeTarget "RemodexBackgroundActivityExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E1F2031425364758697A5C9 /* Release */,
+				7E1F2031425364758697A5C8 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

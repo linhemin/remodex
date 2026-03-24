@@ -41,6 +41,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Remodex needs camera access to let you take photos and attach them to your messages.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Remodex uses your location in the background to try to keep your paired Mac connection alive while the app is locked or in the background. This increases battery usage.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Remodex uses your location so it can request background keepalive for your paired Mac connection.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -52,6 +56,8 @@
 	<string>CodexMobile needs local network access to connect to your Codex app-server running on your Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Remodex needs microphone access to record voice notes for ChatGPT transcription.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_remodex-permission._tcp</string>
@@ -86,6 +92,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>location</string>
 		<string>remote-notification</string>
 	</array>
 	<key>UILaunchScreen</key>

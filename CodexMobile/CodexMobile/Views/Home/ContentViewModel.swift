@@ -215,12 +215,6 @@ final class ContentViewModel {
 }
 
 extension ContentViewModel {
-    private enum ReconnectURLResolution {
-        case use(String)
-        case fallbackToSaved
-        case stop
-    }
-
     func connect(codex: CodexService, serverURL: String) async throws {
         try await codex.connect(
             serverURL: serverURL,
@@ -301,88 +295,6 @@ extension ContentViewModel {
 
     // Chooses the best reconnect path: resolve the live trusted-Mac session first, then fall back to the saved QR session.
     func preferredReconnectURL(codex: CodexService) async -> String? {
-        switch await trustedReconnectResolution(codex: codex) {
-        case .use(let resolvedURL):
-            return resolvedURL
-        case .fallbackToSaved:
-            return savedReconnectURL(codex: codex)
-        case .stop:
-            return nil
-        }
-    }
-
-    // Resolves a trusted-Mac session when possible and tells the caller whether to use, fall back, or stop.
-    private func trustedReconnectResolution(codex: CodexService) async -> ReconnectURLResolution {
-        guard codex.hasTrustedMacReconnectCandidate else {
-            return .fallbackToSaved
-        }
-
-        do {
-            guard let trustedReconnectURL = try await resolvedTrustedReconnectURL(codex: codex) else {
-                return .fallbackToSaved
-            }
-            return .use(trustedReconnectURL)
-        } catch let error as CodexTrustedSessionResolveError {
-            return trustedReconnectResolution(for: error, codex: codex)
-        } catch {
-            if !codex.hasSavedRelaySession {
-                codex.lastErrorMessage = error.localizedDescription
-            }
-            return .fallbackToSaved
-        }
-    }
-
-    // Builds the live reconnect URL after the trusted-session lookup succeeds.
-    private func resolvedTrustedReconnectURL(codex: CodexService) async throws -> String? {
-        let resolved = try await codex.resolveTrustedMacSession()
-        guard let relayURL = codex.normalizedRelayURL else {
-            return nil
-        }
-        return "\(relayURL)/\(resolved.sessionId)"
-    }
-
-    // Applies trusted-resolve error policy without mixing it into the happy path URL assembly.
-    private func trustedReconnectResolution(
-        for error: CodexTrustedSessionResolveError,
-        codex: CodexService
-    ) -> ReconnectURLResolution {
-        switch error {
-        case .unsupportedRelay:
-            if !codex.hasSavedRelaySession {
-                codex.connectionRecoveryState = .idle
-                codex.lastErrorMessage = "This relay needs a fresh QR scan before trusted reconnect is available."
-                return .stop
-            }
-            return .fallbackToSaved
-        case .macOffline(let message):
-            if codex.hasSavedRelaySession {
-                codex.lastErrorMessage = nil
-                return .fallbackToSaved
-            }
-            codex.connectionRecoveryState = .idle
-            codex.lastErrorMessage = message
-            return .stop
-        case .rePairRequired(let message):
-            codex.connectionRecoveryState = .idle
-            codex.shouldAutoReconnectOnForeground = false
-            codex.lastErrorMessage = message
-            return .stop
-        case .noTrustedMac:
-            return .fallbackToSaved
-        case .invalidResponse(let message), .network(let message):
-            if !codex.hasSavedRelaySession {
-                codex.lastErrorMessage = message
-            }
-            return .fallbackToSaved
-        }
-    }
-
-    // Reuses the last QR-resolved session when trusted lookup is unavailable or not yet supported end-to-end.
-    private func savedReconnectURL(codex: CodexService) -> String? {
-        guard let sessionId = codex.normalizedRelaySessionId,
-              let relayURL = codex.normalizedRelayURL else {
-            return nil
-        }
-        return "\(relayURL)/\(sessionId)"
+        await codex.preferredReconnectURLForAutoReconnect()
     }
 }

@@ -10,17 +10,21 @@ import SwiftUI
 struct CodexMobileApp: App {
     @UIApplicationDelegateAdaptor(CodexMobileAppDelegate.self) private var appDelegate
     @State private var codexService: CodexService
+    @State private var backgroundConnectionCoordinator: BackgroundConnectionCoordinator
 
     init() {
         let service = CodexService()
+        let backgroundConnectionCoordinator = BackgroundConnectionCoordinator(connectionService: service)
         service.configureNotifications()
         _codexService = State(initialValue: service)
+        _backgroundConnectionCoordinator = State(initialValue: backgroundConnectionCoordinator)
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(codexService)
+                .environment(backgroundConnectionCoordinator)
                 .task {
                     await codexService.requestNotificationPermissionOnFirstLaunchIfNeeded()
                 }
