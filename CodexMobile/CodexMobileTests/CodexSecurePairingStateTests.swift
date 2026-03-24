@@ -149,12 +149,17 @@ final class CodexSecurePairingStateTests: XCTestCase {
     func testApplyingResolvedTrustedSessionPersistsLocalRelayDiscoveryMetadata() {
         let service = makeService()
         let macDeviceID = "mac-\(UUID().uuidString)"
+        let remoteRelayURL = "wss://relay.example/relay"
+        let remoteSessionID = "saved-session"
         let relayURL = "ws://macbook-pro.local:9000/relay"
 
+        SecureStore.writeString(remoteSessionID, for: CodexSecureKeys.relaySessionId)
+        service.relaySessionId = remoteSessionID
         service.trustedMacRegistry.records[macDeviceID] = CodexTrustedMacRecord(
             macDeviceId: macDeviceID,
             macIdentityPublicKey: Data(repeating: 9, count: 32).base64EncodedString(),
-            lastPairedAt: Date()
+            lastPairedAt: Date(),
+            relayURL: remoteRelayURL
         )
 
         service.applyResolvedTrustedSession(
@@ -169,6 +174,10 @@ final class CodexSecurePairingStateTests: XCTestCase {
         )
 
         let record = service.trustedMacRegistry.records[macDeviceID]
+        // Session IDs are now always persisted (universal across relay paths) for cellular fallback.
+        XCTAssertEqual(SecureStore.readString(for: CodexSecureKeys.relaySessionId), "fresh-session")
+        XCTAssertEqual(record?.relayURL, remoteRelayURL)
+        XCTAssertEqual(record?.lastResolvedSessionId, "fresh-session")
         XCTAssertEqual(record?.lastLocalRelayURL, relayURL)
         XCTAssertNil(record?.lastOverlayRelayURL)
         XCTAssertNotNil(record?.lastDiscoveredAt)
@@ -177,12 +186,17 @@ final class CodexSecurePairingStateTests: XCTestCase {
     func testApplyingResolvedTrustedSessionPersistsOverlayRelayDiscoveryMetadata() {
         let service = makeService()
         let macDeviceID = "mac-\(UUID().uuidString)"
+        let remoteRelayURL = "wss://relay.example/relay"
+        let remoteSessionID = "saved-session"
         let relayURL = "ws://100.122.27.82:9000/relay"
 
+        SecureStore.writeString(remoteSessionID, for: CodexSecureKeys.relaySessionId)
+        service.relaySessionId = remoteSessionID
         service.trustedMacRegistry.records[macDeviceID] = CodexTrustedMacRecord(
             macDeviceId: macDeviceID,
             macIdentityPublicKey: Data(repeating: 11, count: 32).base64EncodedString(),
-            lastPairedAt: Date()
+            lastPairedAt: Date(),
+            relayURL: remoteRelayURL
         )
 
         service.applyResolvedTrustedSession(
@@ -197,6 +211,10 @@ final class CodexSecurePairingStateTests: XCTestCase {
         )
 
         let record = service.trustedMacRegistry.records[macDeviceID]
+        // Session IDs are now always persisted (universal across relay paths) for cellular fallback.
+        XCTAssertEqual(SecureStore.readString(for: CodexSecureKeys.relaySessionId), "fresh-session")
+        XCTAssertEqual(record?.relayURL, remoteRelayURL)
+        XCTAssertEqual(record?.lastResolvedSessionId, "fresh-session")
         XCTAssertNil(record?.lastLocalRelayURL)
         XCTAssertEqual(record?.lastOverlayRelayURL, relayURL)
         XCTAssertNotNil(record?.lastDiscoveredAt)

@@ -145,8 +145,8 @@ struct HomeEmptyStateView<AuthSection: View>: View {
             let elapsed = Date().timeIntervalSince(connectionAttemptStartedAt)
             if elapsed >= 12 { return "Still connecting…" }
             return "Connecting"
-        case .loadingChats:
-            return "Loading chats"
+        case .loadingChats(let loaded):
+            return loaded > 0 ? "Syncing (\(loaded) chats)" : "Loading chats"
         case .syncing:
             return "Syncing"
         case .connected:
@@ -160,8 +160,8 @@ struct HomeEmptyStateView<AuthSection: View>: View {
         switch connectionPhase {
         case .connecting:
             return "Reconnecting..."
-        case .loadingChats:
-            return "Loading chats..."
+        case .loadingChats(let loaded):
+            return loaded > 0 ? "Syncing (\(loaded) chats)..." : "Loading chats..."
         case .syncing:
             return "Syncing..."
         case .connected:

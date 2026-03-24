@@ -13,6 +13,7 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var viewModel = ContentViewModel()
+    @State private var networkReachabilityMonitor = NetworkReachabilityMonitor()
     @State private var isSidebarOpen = false
     @State private var sidebarDragOffset: CGFloat = 0
     @State private var selectedThread: CodexThread?
@@ -83,7 +84,32 @@ struct ContentView: View {
                         return
                     }
                     Task {
-                        await viewModel.attemptAutoReconnectOnForegroundIfNeeded(codex: codex)
+                        await viewModel.attemptAutoReconnectOnForegroundIfNeeded(
+                            codex: codex,
+                            prefersLocalNetwork: networkReachabilityMonitor.prefersLocalNetwork
+                        )
+                    }
+                }
+            }
+            .onChange(of: networkReachabilityMonitor.satisfiedChangeToken) { _, _ in
+                // Kept for SwiftUI observation tracking; the actual reconnect is
+                // triggered by the direct onSignificantChange callback below.
+            }
+            .task {
+                // Wire up direct callback so network changes preempt in-flight
+                // sync/usage tasks without waiting for SwiftUI's render cycle.
+                networkReachabilityMonitor.onSignificantChange = { [weak codex] prefersLocal in
+                    guard let codex,
+                          scenePhase == .active,
+                          hasSeenOnboarding,
+                          !isShowingManualScanner else {
+                        return
+                    }
+                    Task {
+                        await viewModel.handleNetworkReachabilityChange(
+                            codex: codex,
+                            prefersLocalNetwork: prefersLocal
+                        )
                     }
                 }
             }
@@ -92,7 +118,10 @@ struct ContentView: View {
                     return
                 }
                 Task {
-                    await viewModel.attemptAutoReconnectOnForegroundIfNeeded(codex: codex)
+                    await viewModel.attemptAutoReconnectOnForegroundIfNeeded(
+                        codex: codex,
+                        prefersLocalNetwork: networkReachabilityMonitor.prefersLocalNetwork
+                    )
                 }
             }
             .onChange(of: codex.threadCompletionBanner) { _, banner in

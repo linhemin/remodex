@@ -137,9 +137,12 @@ final class ContentViewModel {
     }
 
     // Reconnects after benign background disconnects.
-    func attemptAutoReconnectOnForegroundIfNeeded(codex: CodexService) async {
+    func attemptAutoReconnectOnForegroundIfNeeded(
+        codex: CodexService,
+        prefersLocalNetwork: Bool = true,
+        excludingRelayURLs: Set<String> = []
+    ) async {
         if codex.isConnected {
-            await attemptLANPromotionIfNeeded(codex: codex)
             return
         }
 
@@ -152,11 +155,16 @@ final class ContentViewModel {
 
         var attempt = 0
         let maxAttempts = 20
+        var excludedRelayURLs = excludingRelayURLs
 
         // Keep trying while the relay pairing is still valid.
         // This lets network changes recover on their own instead of dropping back to a manual reconnect button.
         while codex.shouldAutoReconnectOnForeground, attempt < maxAttempts {
-            guard let fullURL = await preferredReconnectURL(codex: codex) else {
+            guard let fullURL = await reconnectURLForCurrentNetwork(
+                codex: codex,
+                prefersLocalNetwork: prefersLocalNetwork,
+                excludingRelayURLs: excludedRelayURLs
+            ) else {
                 codex.shouldAutoReconnectOnForeground = false
                 codex.connectionRecoveryState = .idle
                 return
@@ -178,12 +186,22 @@ final class ContentViewModel {
                     attempt: max(1, attempt + 1),
                     message: "Reconnecting..."
                 )
-                try await connect(codex: codex, serverURL: fullURL)
+                try await connect(
+                    codex: codex,
+                    serverURL: fullURL,
+                    allowLANPromotion: false
+                )
                 codex.connectionRecoveryState = .idle
                 codex.lastErrorMessage = nil
                 codex.shouldAutoReconnectOnForeground = false
                 return
             } catch {
+                if let failedRelayURL = reconnectRelayURL(from: fullURL),
+                   let failedRelay = URL(string: failedRelayURL),
+                   codex.relayHostCategory(for: failedRelay) == .local {
+                    excludedRelayURLs.insert(failedRelayURL)
+                }
+
                 if codex.secureConnectionState == .rePairRequired {
                     codex.connectionRecoveryState = .idle
                     codex.shouldAutoReconnectOnForeground = false
@@ -353,28 +371,71 @@ extension ContentViewModel {
                 allowLANPromotion: false
             )
         } catch {
-            try? await connect(
+            await recoverFromFailedLANPromotion(
                 codex: codex,
-                serverURL: currentReconnectURL,
-                allowLANPromotion: false
+                currentReconnectURL: currentReconnectURL,
+                failedPromotionRelayURL: candidate.url.absoluteString
             )
         }
     }
 
+    func handleNetworkReachabilityRestored(codex: CodexService) async {
+        await handleNetworkReachabilityChange(codex: codex, prefersLocalNetwork: true)
+    }
+
+    func handleNetworkReachabilityChange(
+        codex: CodexService,
+        prefersLocalNetwork: Bool
+    ) async {
+        // Show switching status immediately so the user sees instant feedback.
+        codex.connectionRecoveryState = .retrying(attempt: 0, message: "Switching network...")
+
+        // Network changes are preemptive: tear down any existing connection AND any
+        // in-flight reconnect loop so we can restart with the correct network preference.
+        if codex.isConnected || codex.isConnecting || isRunningAutoReconnect {
+            // Signal the running reconnect loop to exit on its next iteration.
+            codex.shouldAutoReconnectOnForeground = false
+            await disconnect(codex: codex, preserveReconnectIntent: false)
+            // Wait briefly for the reconnect loop to observe the flag and exit.
+            var waitCount = 0
+            while isRunningAutoReconnect && waitCount < 15 {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                waitCount += 1
+            }
+        }
+
+        guard codex.hasReconnectCandidate else {
+            codex.connectionRecoveryState = .idle
+            return
+        }
+
+        codex.shouldAutoReconnectOnForeground = true
+
+        await attemptAutoReconnectOnForegroundIfNeeded(
+            codex: codex,
+            prefersLocalNetwork: prefersLocalNetwork
+        )
+    }
+
     // Chooses the best reconnect path: resolve the live trusted-Mac session first, then fall back to the saved QR session.
-    func preferredReconnectURL(codex: CodexService) async -> String? {
+    func preferredReconnectURL(
+        codex: CodexService,
+        excludingRelayURLs: Set<String> = []
+    ) async -> String? {
         let liveBonjourCandidates = await codex.discoverBonjourReconnectCandidates()
 
         switch await trustedReconnectResolution(
             codex: codex,
-            liveBonjourCandidates: liveBonjourCandidates
+            liveBonjourCandidates: liveBonjourCandidates,
+            excludingRelayURLs: excludingRelayURLs
         ) {
         case .use(let resolvedURL):
             return resolvedURL
         case .fallbackToSaved:
             return savedReconnectURL(
                 codex: codex,
-                liveBonjourCandidates: liveBonjourCandidates
+                liveBonjourCandidates: liveBonjourCandidates,
+                excludingRelayURLs: excludingRelayURLs
             )
         case .stop:
             return nil
@@ -384,7 +445,8 @@ extension ContentViewModel {
     // Resolves a trusted-Mac session when possible and tells the caller whether to use, fall back, or stop.
     private func trustedReconnectResolution(
         codex: CodexService,
-        liveBonjourCandidates: [RelayDiscoveryCandidate]
+        liveBonjourCandidates: [RelayDiscoveryCandidate],
+        excludingRelayURLs: Set<String>
     ) async -> ReconnectURLResolution {
         guard codex.hasTrustedMacReconnectCandidate || !liveBonjourCandidates.isEmpty else {
             return .fallbackToSaved
@@ -393,7 +455,11 @@ extension ContentViewModel {
         var lastTrustedReconnectError: CodexTrustedSessionResolveError?
         var lastUnexpectedError: Error?
 
-        for candidate in codex.rankReconnectCandidates(liveBonjourCandidates: liveBonjourCandidates) {
+        for candidate in reconnectCandidates(
+            codex: codex,
+            liveBonjourCandidates: liveBonjourCandidates,
+            excludingRelayURLs: excludingRelayURLs
+        ) {
             do {
                 guard let trustedReconnectURL = try await resolvedTrustedReconnectURL(
                     codex: codex,
@@ -473,9 +539,14 @@ extension ContentViewModel {
     // Reuses the last QR-resolved session when trusted lookup is unavailable or not yet supported end-to-end.
     private func savedReconnectURL(
         codex: CodexService,
-        liveBonjourCandidates: [RelayDiscoveryCandidate]
+        liveBonjourCandidates: [RelayDiscoveryCandidate],
+        excludingRelayURLs: Set<String>
     ) -> String? {
-        for candidate in codex.rankReconnectCandidates(liveBonjourCandidates: liveBonjourCandidates) {
+        for candidate in reconnectCandidates(
+            codex: codex,
+            liveBonjourCandidates: liveBonjourCandidates,
+            excludingRelayURLs: excludingRelayURLs
+        ) {
             if let fullURL = codex.buildReconnectURL(baseRelayURL: candidate.url.absoluteString) {
                 return fullURL
             }
@@ -535,5 +606,188 @@ extension ContentViewModel {
         }
 
         return codex.buildReconnectURL(baseRelayURL: candidateRelayURL)
+    }
+
+    private func recoverFromFailedLANPromotion(
+        codex: CodexService,
+        currentReconnectURL: String,
+        failedPromotionRelayURL: String
+    ) async {
+        do {
+            try await connect(
+                codex: codex,
+                serverURL: currentReconnectURL,
+                allowLANPromotion: false
+            )
+            return
+        } catch {
+            let excludedRelayURLs = Set(
+                [failedPromotionRelayURL].compactMap {
+                    RelayDiscoveryCoordinator.normalizedRelayURL(from: $0)?.absoluteString
+                }
+            )
+
+            guard let refreshedReconnectURL = await preferredReconnectURL(
+                codex: codex,
+                excludingRelayURLs: excludedRelayURLs
+            ),
+                  refreshedReconnectURL != currentReconnectURL else {
+                codex.shouldAutoReconnectOnForeground = true
+                codex.connectionRecoveryState = .retrying(attempt: 0, message: "Reconnecting...")
+                return
+            }
+
+            do {
+                try await connect(
+                    codex: codex,
+                    serverURL: refreshedReconnectURL,
+                    allowLANPromotion: false
+                )
+            } catch {
+                codex.shouldAutoReconnectOnForeground = true
+                codex.connectionRecoveryState = .retrying(attempt: 0, message: "Reconnecting...")
+            }
+        }
+    }
+
+    private func reconnectCandidates(
+        codex: CodexService,
+        liveBonjourCandidates: [RelayDiscoveryCandidate],
+        excludingRelayURLs: Set<String>
+    ) -> [RelayDiscoveryCandidate] {
+        let normalizedExcludedRelayURLs = Set(
+            excludingRelayURLs.compactMap {
+                RelayDiscoveryCoordinator.normalizedRelayURL(from: $0)?.absoluteString
+            }
+        )
+
+        guard !normalizedExcludedRelayURLs.isEmpty else {
+            return codex.rankReconnectCandidates(liveBonjourCandidates: liveBonjourCandidates)
+        }
+
+        return codex.rankReconnectCandidates(liveBonjourCandidates: liveBonjourCandidates).filter { candidate in
+            guard let candidateRelayURL = RelayDiscoveryCoordinator.normalizedRelayURL(from: candidate.url)?.absoluteString else {
+                return true
+            }
+            return !normalizedExcludedRelayURLs.contains(candidateRelayURL)
+        }
+    }
+
+    private func reconnectURLForCurrentNetwork(
+        codex: CodexService,
+        prefersLocalNetwork: Bool,
+        excludingRelayURLs: Set<String> = []
+    ) async -> String? {
+        // Skip Bonjour discovery entirely on cellular — mDNS cannot resolve .local hostnames
+        // outside the local network, so the discovery timeout is wasted time.
+        let liveBonjourCandidates: [RelayDiscoveryCandidate]
+        if prefersLocalNetwork {
+            liveBonjourCandidates = await codex.discoverBonjourReconnectCandidates(
+                timeoutNanoseconds: 1_000_000_000
+            )
+        } else {
+            liveBonjourCandidates = []
+        }
+
+        if prefersLocalNetwork,
+           let liveLocalReconnectURL = await liveBonjourReconnectURL(
+            codex: codex,
+            liveBonjourCandidates: liveBonjourCandidates,
+            excludingRelayURLs: excludingRelayURLs
+        ) {
+            return liveLocalReconnectURL
+        }
+
+        if let savedRemoteRelayReconnectURL = savedRemoteRelayReconnectURL(codex: codex) {
+            return savedRemoteRelayReconnectURL
+        }
+
+        let excludedLocalRelayURLs = localRelayReconnectURLs(codex: codex).union(excludingRelayURLs)
+
+        return await preferredReconnectURL(
+            codex: codex,
+            excludingRelayURLs: excludedLocalRelayURLs
+        )
+    }
+
+    private func currentReconnectURL(codex: CodexService) -> String? {
+        guard let currentRelayURL = codex.normalizedRelayURL else {
+            return nil
+        }
+        return codex.buildReconnectURL(baseRelayURL: currentRelayURL)
+    }
+
+    private func liveBonjourReconnectURL(
+        codex: CodexService,
+        liveBonjourCandidates: [RelayDiscoveryCandidate],
+        excludingRelayURLs: Set<String>
+    ) async -> String? {
+        guard let targetMacDeviceID = codex.normalizedRelayMacDeviceId ?? codex.preferredTrustedMacDeviceId else {
+            return nil
+        }
+
+        let bonjourCandidates = RelayDiscoveryCoordinator.rankCandidates(
+            liveBonjourCandidates.filter {
+                $0.source == .bonjour && $0.macDeviceId == targetMacDeviceID
+            },
+            preferredMacDeviceId: targetMacDeviceID
+        )
+
+        guard let candidate = bonjourCandidates.first(where: { candidate in
+            guard codex.relayHostCategory(for: candidate.url) == .local,
+                  let normalizedRelayURL = RelayDiscoveryCoordinator.normalizedRelayURL(from: candidate.url)?
+                    .absoluteString else {
+                return false
+            }
+            return !excludingRelayURLs.contains(normalizedRelayURL)
+        }) else {
+            return nil
+        }
+
+        return await lanPromotionReconnectURL(
+            codex: codex,
+            candidateRelayURL: candidate.url.absoluteString
+        ) ?? codex.buildReconnectURL(baseRelayURL: candidate.url.absoluteString)
+    }
+
+    private func savedRemoteRelayReconnectURL(codex: CodexService) -> String? {
+        // Prefer the in-memory session ID (kept fresh by trusted-session resolve across LAN
+        // promotions) over the Keychain value which may be stale from the initial QR scan.
+        let savedRemoteSessionID = codex.normalizedRelaySessionId ?? codex.normalizedPersistedRelaySessionId
+        let remoteRelayCandidates: [String?] = [
+            codex.preferredTrustedMacRecord?.relayURL,
+            codex.normalizedRelayURL,
+        ]
+
+        for relayURL in remoteRelayCandidates {
+            guard let relayURL,
+                  let normalizedRelayURL = RelayDiscoveryCoordinator.normalizedRelayURL(from: relayURL),
+                  codex.relayHostCategory(for: normalizedRelayURL) == .neither,
+                  let savedRemoteSessionID,
+                  let reconnectURL = codex.buildReconnectURL(
+                    baseRelayURL: normalizedRelayURL.absoluteString,
+                    sessionId: savedRemoteSessionID
+                  ) else {
+                continue
+            }
+            return reconnectURL
+        }
+
+        return nil
+    }
+
+    private func localRelayReconnectURLs(codex: CodexService) -> Set<String> {
+        let relayURLs = codex.rankReconnectCandidates().compactMap { candidate -> String? in
+            guard codex.relayHostCategory(for: candidate.url) == .local else {
+                return nil
+            }
+            return RelayDiscoveryCoordinator.normalizedRelayURL(from: candidate.url)?.absoluteString
+        }
+
+        return Set<String>(relayURLs)
+    }
+
+    private func reconnectRelayURL(from reconnectURL: String) -> String? {
+        RelayDiscoveryCoordinator.normalizedRelayURL(from: reconnectURL)?.absoluteString
     }
 }

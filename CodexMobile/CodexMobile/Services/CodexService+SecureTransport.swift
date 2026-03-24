@@ -259,7 +259,11 @@ extension CodexService {
     // Saves the QR-derived bridge metadata used for secure reconnects.
     func rememberRelayPairing(_ payload: CodexPairingQRPayload) {
         SecureStore.writeString(payload.sessionId, for: CodexSecureKeys.relaySessionId)
-        SecureStore.writeString(payload.relay, for: CodexSecureKeys.relayUrl)
+        // Only persist remote relay URLs to Keychain; .local addresses are discovered via mDNS at runtime
+        // and cannot be resolved on cellular networks.
+        if let url = URL(string: payload.relay), relayHostCategory(for: url) == .neither {
+            SecureStore.writeString(payload.relay, for: CodexSecureKeys.relayUrl)
+        }
         SecureStore.writeString(payload.macDeviceId, for: CodexSecureKeys.relayMacDeviceId)
         SecureStore.writeString(payload.macIdentityPublicKey, for: CodexSecureKeys.relayMacIdentityPublicKey)
         SecureStore.writeString(String(codexSecureProtocolVersion), for: CodexSecureKeys.relayProtocolVersion)
@@ -520,11 +524,15 @@ private extension CodexService {
 
     func trustMac(deviceId: String, publicKey: String, relayURL: String?, displayName: String?) {
         let existing = trustedMacRegistry.records[deviceId]
+        // Only store remote relay URLs as the primary relayURL; .local addresses are resolved
+        // via mDNS at runtime and break when the device switches to cellular.
+        let isRemoteRelayURL = relayURL.flatMap { URL(string: $0) }.map { relayHostCategory(for: $0) == .neither } ?? false
+        let effectiveRelayURL = isRemoteRelayURL ? relayURL : existing?.relayURL
         var record = CodexTrustedMacRecord(
             macDeviceId: deviceId,
             macIdentityPublicKey: publicKey,
             lastPairedAt: Date(),
-            relayURL: relayURL ?? existing?.relayURL,
+            relayURL: effectiveRelayURL,
             lastLocalRelayURL: existing?.lastLocalRelayURL,
             lastOverlayRelayURL: existing?.lastOverlayRelayURL,
             lastDiscoveredAt: existing?.lastDiscoveredAt,
@@ -629,13 +637,23 @@ private extension CodexService {
     }
 
     private func rememberResolvedTrustedSession(_ resolved: CodexTrustedSessionResolveResponse, relayURL: String) {
+        let normalizedResolvedRelayURL = RelayDiscoveryCoordinator.normalizedRelayURL(from: relayURL)?.absoluteString
+        let resolvedRelayCategory = normalizedResolvedRelayURL.flatMap { URL(string: $0) }.map(relayHostCategory(for:))
+        let shouldPersistRemoteFallback = resolvedRelayCategory == .neither
+
+        // Session IDs are universal across relay paths (local and remote), so always persist
+        // the freshest one to Keychain for cellular reconnect fallback.
         SecureStore.writeString(resolved.sessionId, for: CodexSecureKeys.relaySessionId)
-        SecureStore.writeString(relayURL, for: CodexSecureKeys.relayUrl)
+        if shouldPersistRemoteFallback {
+            if let normalizedResolvedRelayURL {
+                SecureStore.writeString(normalizedResolvedRelayURL, for: CodexSecureKeys.relayUrl)
+            }
+        }
         SecureStore.writeString(resolved.macDeviceId, for: CodexSecureKeys.relayMacDeviceId)
         SecureStore.writeString(resolved.macIdentityPublicKey, for: CodexSecureKeys.relayMacIdentityPublicKey)
         SecureStore.writeString(String(codexSecureProtocolVersion), for: CodexSecureKeys.relayProtocolVersion)
         relaySessionId = resolved.sessionId
-        relayUrl = relayURL
+        relayUrl = normalizedResolvedRelayURL ?? relayURL
         relayMacDeviceId = resolved.macDeviceId
         relayMacIdentityPublicKey = resolved.macIdentityPublicKey
         relayProtocolVersion = codexSecureProtocolVersion
@@ -647,7 +665,10 @@ private extension CodexService {
         lastTrustedMacDeviceId = resolved.macDeviceId
 
         if var trustedMac = trustedMacRegistry.records[resolved.macDeviceId] {
-            trustedMac.relayURL = relayURL
+            if shouldPersistRemoteFallback,
+               let normalizedResolvedRelayURL {
+                trustedMac.relayURL = normalizedResolvedRelayURL
+            }
             trustedMac.displayName = resolved.displayName ?? trustedMac.displayName
             trustedMac.lastResolvedSessionId = resolved.sessionId
             trustedMac.lastResolvedAt = Date()

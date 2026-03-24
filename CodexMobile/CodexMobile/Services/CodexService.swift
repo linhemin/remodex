@@ -191,7 +191,7 @@ enum CodexConnectionRecoveryState: Equatable, Sendable {
 enum CodexConnectionPhase: Equatable, Sendable {
     case offline
     case connecting
-    case loadingChats
+    case loadingChats(loaded: Int)
     case syncing
     case connected
 }
@@ -624,6 +624,29 @@ final class CodexService {
         self.relayUrl = SecureStore.readString(for: CodexSecureKeys.relayUrl)
         self.relayMacDeviceId = SecureStore.readString(for: CodexSecureKeys.relayMacDeviceId)
         self.relayMacIdentityPublicKey = SecureStore.readString(for: CodexSecureKeys.relayMacIdentityPublicKey)
+
+        // Migrate stale .local relay URLs left by older builds: .local addresses cannot be
+        // resolved on cellular so they must never be the persisted primary relay URL.
+        if let savedRelayUrl = self.relayUrl,
+           let savedURL = URL(string: savedRelayUrl),
+           relayHostCategory(for: savedURL) != .neither {
+            SecureStore.deleteValue(for: CodexSecureKeys.relayUrl)
+            self.relayUrl = nil
+            // Preserve the .local URL as a LAN discovery hint in the trusted registry.
+            if let macDeviceId = self.relayMacDeviceId,
+               var record = trustedMacRegistry.records[macDeviceId] {
+                if record.lastLocalRelayURL == nil, relayHostCategory(for: savedURL) == .local {
+                    record.lastLocalRelayURL = savedRelayUrl
+                }
+                if record.relayURL != nil,
+                   let recordURL = URL(string: record.relayURL!),
+                   relayHostCategory(for: recordURL) != .neither {
+                    record.relayURL = nil
+                }
+                trustedMacRegistry.records[macDeviceId] = record
+                SecureStore.writeCodable(trustedMacRegistry, for: CodexSecureKeys.trustedMacRegistry)
+            }
+        }
         if let rawProtocolVersion = SecureStore.readString(for: CodexSecureKeys.relayProtocolVersion),
            let parsedProtocolVersion = Int(rawProtocolVersion) {
             self.relayProtocolVersion = parsedProtocolVersion
@@ -654,6 +677,13 @@ final class CodexService {
     // Normalizes the persisted relay session id before reuse in reconnect flows.
     var normalizedRelaySessionId: String? {
         relaySessionId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+    }
+
+    // Reads the persisted QR/remote fallback session id without trusting any in-memory LAN live session.
+    var normalizedPersistedRelaySessionId: String? {
+        SecureStore.readString(for: CodexSecureKeys.relaySessionId)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
     }
@@ -815,11 +845,11 @@ final class CodexService {
         }
 
         if threads.isEmpty && (isBootstrappingConnectionSync || isLoadingThreads) {
-            return .loadingChats
+            return .loadingChats(loaded: 0)
         }
 
         if isBootstrappingConnectionSync || isLoadingModels || isLoadingThreads {
-            return .syncing
+            return .loadingChats(loaded: threads.count)
         }
 
         return .connected

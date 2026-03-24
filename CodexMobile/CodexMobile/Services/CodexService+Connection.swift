@@ -103,6 +103,11 @@ extension CodexService {
             shouldAutoReconnectOnForeground = false
             connectionRecoveryState = .idle
             lastErrorMessage = nil
+            // Keep relayUrl in sync with the actual connection so display and
+            // reconnect logic always reflect the current relay path.
+            if let connectedRelayURL = RelayDiscoveryCoordinator.normalizedRelayURL(from: normalizedServerURL)?.absoluteString {
+                relayUrl = connectedRelayURL
+            }
             try await initializeSession()
             trustedReconnectFailureCount = 0
             if secureSession != nil {
@@ -957,6 +962,17 @@ extension CodexService {
         }
 
         return "\(relayURL)/\(sessionId)"
+    }
+
+    func buildReconnectURL(baseRelayURL: String, sessionId: String) -> String? {
+        let normalizedSessionId = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionId.isEmpty,
+              let relayURL = RelayDiscoveryCoordinator.normalizedRelayURL(from: baseRelayURL)?
+                .absoluteString else {
+            return nil
+        }
+
+        return "\(relayURL)/\(normalizedSessionId)"
     }
 
     // Chooses the most direct relay transport for LAN-style hosts plus private overlays like Tailscale.
